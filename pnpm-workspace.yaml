@@ -1,6 +1,7 @@
 packages:
   - .
   - ui
+  - apps/macos/stage-live2d
   - packages/*
   - extensions/*
 

@@ -1,0 +1,17 @@
+{
+  "name": "kinkoclaw-stage-live2d",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "6.5.10"
+  },
+  "devDependencies": {
+    "vite": "8.0.3"
+  }
+}

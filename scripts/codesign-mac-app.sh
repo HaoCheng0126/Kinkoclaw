@@ -188,6 +188,10 @@ fi
 
 APP_ENTITLEMENTS="$ENT_TMP_APP_BASE"
 
+# Some copied SwiftPM resource bundles land as read-only files.
+# Make the bundle user-writable first so recursive xattr cleanup can actually succeed.
+chmod -R u+w "$APP_BUNDLE" 2>/dev/null || true
+
 # clear extended attributes to avoid stale signatures
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 
@@ -247,9 +251,38 @@ verify_team_ids() {
   fi
 }
 
+main_executable_path() {
+  local plist="$APP_BUNDLE/Contents/Info.plist"
+  local executable_name=""
+
+  if [[ -f "$plist" ]]; then
+    executable_name=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" 2>/dev/null || true)
+  fi
+
+  if [[ -n "$executable_name" && -f "$APP_BUNDLE/Contents/MacOS/$executable_name" ]]; then
+    echo "$APP_BUNDLE/Contents/MacOS/$executable_name"
+    return 0
+  fi
+
+  if [[ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]]; then
+    echo "$APP_BUNDLE/Contents/MacOS/OpenClaw"
+    return 0
+  fi
+
+  local fallback
+  fallback="$(find "$APP_BUNDLE/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit 2>/dev/null || true)"
+  if [[ -n "$fallback" ]]; then
+    echo "$fallback"
+    return 0
+  fi
+
+  return 1
+}
+
 # Sign main binary
-if [ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]; then
-  echo "Signing main binary"; sign_item "$APP_BUNDLE/Contents/MacOS/OpenClaw" "$APP_ENTITLEMENTS"
+if MAIN_BINARY="$(main_executable_path)"; then
+  echo "Signing main binary: $MAIN_BINARY"
+  sign_item "$MAIN_BINARY" "$APP_ENTITLEMENTS"
 fi
 
 # Sign Sparkle deeply if present
@@ -282,6 +315,11 @@ fi
 
 # Finally sign the bundle
 sign_item "$APP_BUNDLE" "$APP_ENTITLEMENTS"
+
+# Desktop/FileProvider metadata can reappear on the finished bundle after signing.
+# Strip it one last time; removing these attributes does not invalidate the code signature.
+chmod -R u+w "$APP_BUNDLE" 2>/dev/null || true
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 
 verify_team_ids
 

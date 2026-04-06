@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "OpenClawIPC", targets: ["OpenClawIPC"]),
         .library(name: "OpenClawDiscovery", targets: ["OpenClawDiscovery"]),
         .executable(name: "OpenClaw", targets: ["OpenClaw"]),
+        .executable(name: "KinkoClaw", targets: ["KinkoClaw"]),
         .executable(name: "openclaw-mac", targets: ["OpenClawMacCLI"]),
     ],
     dependencies: [
@@ -66,6 +67,25 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency"),
             ]),
         .executableTarget(
+            name: "KinkoClaw",
+            dependencies: [
+                .product(name: "OpenClawKit", package: "OpenClawKit"),
+                .product(name: "OpenClawChatUI", package: "OpenClawKit"),
+                .product(name: "OpenClawProtocol", package: "OpenClawKit"),
+            ],
+            path: "Sources/KinkoClaw",
+            exclude: [
+                "Resources/Info.plist",
+            ],
+            resources: [
+                .copy("Resources/KinkoClaw.icns"),
+                .copy("Resources/Stage"),
+                .copy("Resources/StageRuntime"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]),
+        .executableTarget(
             name: "OpenClawMacCLI",
             dependencies: [
                 "OpenClawDiscovery",
@@ -85,6 +105,16 @@ let package = Package(
                 .product(name: "OpenClawProtocol", package: "OpenClawKit"),
                 .product(name: "SwabbleKit", package: "swabble"),
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+                .enableExperimentalFeature("SwiftTesting"),
+            ]),
+        .testTarget(
+            name: "KinkoClawTests",
+            dependencies: [
+                "KinkoClaw",
+            ],
+            path: "Tests/KinkoClawTests",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
                 .enableExperimentalFeature("SwiftTesting"),
