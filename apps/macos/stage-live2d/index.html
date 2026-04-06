@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KinkoClaw Live2D Stage</title>
+    <script src="./vendor/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js"></script>
+    <script>
+      window.__KINKOCLAW_STAGE_QUEUE__ = [];
+      window.__KINKOCLAW_STAGE_RECEIVE__ = function (event) {
+        const receiver =
+          window.KinkoClawStage && typeof window.KinkoClawStage.receive === "function"
+            ? window.KinkoClawStage.receive
+            : null;
+        if (receiver) {
+          receiver(event);
+        } else {
+          window.__KINKOCLAW_STAGE_QUEUE__.push(event);
+        }
+      };
+      window.__KINKOCLAW_STAGE_FLUSH__ = function () {
+        const receiver =
+          window.KinkoClawStage && typeof window.KinkoClawStage.receive === "function"
+            ? window.KinkoClawStage.receive
+            : null;
+        if (!receiver) return;
+        const queue = window.__KINKOCLAW_STAGE_QUEUE__ || [];
+        while (queue.length) {
+          receiver(queue.shift());
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

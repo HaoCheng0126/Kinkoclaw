@@ -1,0 +1,21 @@
+{
+  "type": "airi-stage-prototype",
+  "renderer": "wkwebview-anime-layer",
+  "name": "AIRI Twilight",
+  "textures": ["texture-face.svg", "texture-hair.svg"],
+  "motions": {
+    "idle": ["idle-night", "idle-breathing"],
+    "thinking": ["think-stars"],
+    "replying": ["reply-smirk"],
+    "speaking": ["speak-wave"]
+  },
+  "expressions": {
+    "idle": "neutral",
+    "listening": "curious",
+    "hearing": "question",
+    "thinking": "think",
+    "replying": "happy",
+    "speaking": "smile",
+    "error": "sad"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "type": "airi-stage-prototype",
+  "renderer": "wkwebview-anime-layer",
+  "name": "AIRI Sunrise",
+  "textures": ["texture-face.svg", "texture-hair.svg"],
+  "motions": {
+    "idle": ["idle-warm", "idle-breathing"],
+    "thinking": ["think-spark"],
+    "replying": ["reply-cheer"],
+    "speaking": ["speak-flare"]
+  },
+  "expressions": {
+    "idle": "neutral",
+    "listening": "curious",
+    "hearing": "surprised",
+    "thinking": "think",
+    "replying": "happy",
+    "speaking": "smile",
+    "error": "awkward"
+  }
+}
