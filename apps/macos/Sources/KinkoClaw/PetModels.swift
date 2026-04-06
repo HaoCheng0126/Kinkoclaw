@@ -1,13 +1,13 @@
 import AppKit
+import Foundation
 import Observation
-import OpenClawKit
 import ServiceManagement
 import SwiftUI
 
 enum GatewayConnectionProfile: String, Codable, CaseIterable, Identifiable, Sendable {
     case local
     case sshTunnel
-    case direct
+    case directWss
 
     var id: String { self.rawValue }
 
@@ -15,7 +15,7 @@ enum GatewayConnectionProfile: String, Codable, CaseIterable, Identifiable, Send
         switch self {
         case .local: "Local"
         case .sshTunnel: "SSH Tunnel"
-        case .direct: "Direct wss"
+        case .directWss: "Direct wss"
         }
     }
 
@@ -23,7 +23,18 @@ enum GatewayConnectionProfile: String, Codable, CaseIterable, Identifiable, Send
         switch self {
         case .local: "Connect to a local gateway running on this Mac."
         case .sshTunnel: "Forward a remote gateway to localhost over SSH."
-        case .direct: "Connect straight to a remote wss:// gateway."
+        case .directWss: "Connect straight to a remote wss:// gateway."
+        }
+    }
+
+    static func fromStoredValue(_ rawValue: String?) -> Self? {
+        switch rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "direct":
+            .directWss
+        case let value?:
+            Self(rawValue: value)
+        default:
+            nil
         }
     }
 }
@@ -31,12 +42,45 @@ enum GatewayConnectionProfile: String, Codable, CaseIterable, Identifiable, Send
 enum PetPresenceState: String, Codable, CaseIterable, Sendable {
     case disconnected
     case idle
-    case listening
-    case hearing
     case thinking
     case replying
-    case speaking
     case error
+}
+
+struct PersonaMemoryCard: Codable, Hashable, Sendable {
+    var characterIdentity: String
+    var speakingStyle: String
+    var relationshipToUser: String
+    var longTermMemories: [String]
+    var constraints: [String]
+
+    static let empty = Self(
+        characterIdentity: "",
+        speakingStyle: "",
+        relationshipToUser: "",
+        longTermMemories: [],
+        constraints: [])
+
+    var hasContent: Bool {
+        !self.characterIdentity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !self.speakingStyle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !self.relationshipToUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            self.longTermMemories.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ||
+            self.constraints.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var sanitized: Self {
+        Self(
+            characterIdentity: self.characterIdentity.trimmingCharacters(in: .whitespacesAndNewlines),
+            speakingStyle: self.speakingStyle.trimmingCharacters(in: .whitespacesAndNewlines),
+            relationshipToUser: self.relationshipToUser.trimmingCharacters(in: .whitespacesAndNewlines),
+            longTermMemories: self.longTermMemories
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty },
+            constraints: self.constraints
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+    }
 }
 
 struct PetPackManifest: Identifiable, Codable, Hashable, Sendable {
@@ -59,6 +103,14 @@ struct PetPackManifest: Identifiable, Codable, Hashable, Sendable {
         let mouthSmoothing: Double
     }
 
+    struct StageSceneFrame: Codable, Hashable, Sendable {
+        let scale: Double
+        let offsetX: Double
+        let offsetY: Double
+
+        static let neutral = Self(scale: 1, offsetX: 0, offsetY: 0)
+    }
+
     struct StageModelManifest: Codable, Hashable, Sendable {
         let modelPath: String
         let textures: [String]
@@ -66,9 +118,7 @@ struct PetPackManifest: Identifiable, Codable, Hashable, Sendable {
         let expressions: [String: String]
     }
 
-    struct VoiceProfile: Codable, Hashable, Sendable {
-        let localeID: String
-        let ttsStyle: String
+    struct DialogueProfile: Codable, Hashable, Sendable {
         let subtitlePrefix: String
     }
 
@@ -82,19 +132,22 @@ struct PetPackManifest: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let displayName: String
     let accentHex: String
+    let previewImage: String?
     let assets: Assets
     let animationProfile: AnimationProfile
     let model: StageModelManifest
-    let voiceProfile: VoiceProfile
+    let defaultSceneFrame: StageSceneFrame
+    let dialogueProfile: DialogueProfile
     let interactionProfile: InteractionProfile
 }
 
 enum PetPackRegistry {
-    static let packs: [PetPackManifest] = [
+    private static let bundledPacks: [PetPackManifest] = [
         PetPackManifest(
             id: "airi-classic",
             displayName: "AIRI Classic",
             accentHex: "#FF6B9B",
+            previewImage: nil,
             assets: .init(
                 hairHex: "#F6B0CF",
                 hairShadowHex: "#D85D90",
@@ -117,35 +170,28 @@ enum PetPackRegistry {
                 ],
                 motions: [
                     "idle": ["Idle:0", "Idle:1", "Idle:2"],
-                    "listening": ["Flick:0"],
-                    "hearing": ["FlickDown:0"],
                     "thinking": ["Flick:0"],
                     "replying": ["Tap:0"],
-                    "speaking": ["Tap@Body:0"],
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [
                     "idle": "neutral",
-                    "listening": "curious",
-                    "hearing": "surprised",
                     "thinking": "think",
                     "replying": "happy",
-                    "speaking": "smile",
                     "error": "awkward",
                 ]),
-            voiceProfile: .init(
-                localeID: "zh-CN",
-                ttsStyle: "dreamy",
-                subtitlePrefix: "AIRI"),
+            defaultSceneFrame: .init(scale: 1, offsetX: 0, offsetY: 0),
+            dialogueProfile: .init(subtitlePrefix: "AIRI"),
             interactionProfile: .init(
-                personaLabel: "Dreamlink Core",
-                pointerFollowStrength: 0.32,
+                personaLabel: "梦链核心",
+                pointerFollowStrength: 0.26,
                 shimmerIntensity: 0.86,
                 breathingScale: 1.024)),
         PetPackManifest(
             id: "airi-twilight",
             displayName: "AIRI Twilight",
             accentHex: "#7D7BFF",
+            previewImage: nil,
             assets: .init(
                 hairHex: "#C7C6FF",
                 hairShadowHex: "#6D64D7",
@@ -168,35 +214,28 @@ enum PetPackRegistry {
                 ],
                 motions: [
                     "idle": ["Idle:0", "Idle:1", "Idle:2"],
-                    "listening": ["Flick:0"],
-                    "hearing": ["FlickDown:0"],
                     "thinking": ["Flick:0"],
                     "replying": ["Tap:0"],
-                    "speaking": ["Tap@Body:0"],
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [
                     "idle": "neutral",
-                    "listening": "curious",
-                    "hearing": "question",
                     "thinking": "think",
                     "replying": "happy",
-                    "speaking": "smile",
                     "error": "sad",
                 ]),
-            voiceProfile: .init(
-                localeID: "en-US",
-                ttsStyle: "velvet",
-                subtitlePrefix: "AIRI"),
+            defaultSceneFrame: .init(scale: 0.98, offsetX: 0, offsetY: -0.01),
+            dialogueProfile: .init(subtitlePrefix: "AIRI"),
             interactionProfile: .init(
-                personaLabel: "Nocturne Link",
-                pointerFollowStrength: 0.28,
+                personaLabel: "夜曲连接",
+                pointerFollowStrength: 0.22,
                 shimmerIntensity: 0.72,
                 breathingScale: 1.02)),
         PetPackManifest(
             id: "airi-sunrise",
             displayName: "AIRI Sunrise",
             accentHex: "#FF8B5E",
+            previewImage: nil,
             assets: .init(
                 hairHex: "#FFD39B",
                 hairShadowHex: "#FF8B5E",
@@ -219,39 +258,44 @@ enum PetPackRegistry {
                 ],
                 motions: [
                     "idle": ["Idle:0", "Idle:1", "Idle:2"],
-                    "listening": ["Flick:0"],
-                    "hearing": ["FlickDown:0"],
                     "thinking": ["Flick:0"],
                     "replying": ["Tap:0"],
-                    "speaking": ["Tap@Body:0"],
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [
                     "idle": "neutral",
-                    "listening": "curious",
-                    "hearing": "surprised",
                     "thinking": "think",
                     "replying": "happy",
-                    "speaking": "smile",
                     "error": "awkward",
                 ]),
-            voiceProfile: .init(
-                localeID: "ja-JP",
-                ttsStyle: "spark",
-                subtitlePrefix: "AIRI"),
+            defaultSceneFrame: .init(scale: 1.04, offsetX: 0.01, offsetY: -0.008),
+            dialogueProfile: .init(subtitlePrefix: "AIRI"),
             interactionProfile: .init(
-                personaLabel: "Solar Bloom",
-                pointerFollowStrength: 0.34,
+                personaLabel: "晨曦绽放",
+                pointerFollowStrength: 0.24,
                 shimmerIntensity: 0.92,
                 breathingScale: 1.028)),
     ]
 
+    static var packs: [PetPackManifest] {
+        let installed = Live2DModelLibrary.installedPacks()
+        guard !installed.isEmpty else { return Self.bundledPacks }
+
+        var unique: [PetPackManifest] = []
+        var seen = Set<String>()
+        for pack in Self.bundledPacks + installed {
+            guard seen.insert(pack.id).inserted else { continue }
+            unique.append(pack)
+        }
+        return unique
+    }
+
     static var defaultPack: PetPackManifest {
-        self.packs[0]
+        Self.bundledPacks[0]
     }
 
     static func pack(for id: String) -> PetPackManifest {
-        self.packs.first(where: { $0.id == id }) ?? self.defaultPack
+        Self.packs.first(where: { $0.id == id }) ?? Self.defaultPack
     }
 }
 
@@ -313,6 +357,10 @@ final class PetCompanionSettings {
         static let directGatewayURL = "kinkoclaw.directGatewayURL"
         static let gatewayAuthTokenRef = "kinkoclaw.gatewayAuthTokenRef"
         static let selectedPackId = "kinkoclaw.selectedPackId"
+        static let sceneModelScale = "kinkoclaw.sceneModelScale"
+        static let sceneModelOffsetX = "kinkoclaw.sceneModelOffsetX"
+        static let sceneModelOffsetY = "kinkoclaw.sceneModelOffsetY"
+        static let personaMemoryCard = "kinkoclaw.personaMemoryCard"
         static let launchAtLogin = "kinkoclaw.launchAtLogin"
         static let windowOriginX = "kinkoclaw.windowOriginX"
         static let windowOriginY = "kinkoclaw.windowOriginY"
@@ -388,6 +436,55 @@ final class PetCompanionSettings {
         }
     }
 
+    var sceneModelScale: Double {
+        didSet {
+            let clamped = min(max(self.sceneModelScale, 0.72), 1.4)
+            if clamped != self.sceneModelScale {
+                self.sceneModelScale = clamped
+                return
+            }
+            self.defaults.set(clamped, forKey: Keys.sceneModelScale)
+        }
+    }
+
+    var sceneModelOffsetX: Double {
+        didSet {
+            let clamped = min(max(self.sceneModelOffsetX, -0.22), 0.22)
+            if clamped != self.sceneModelOffsetX {
+                self.sceneModelOffsetX = clamped
+                return
+            }
+            self.defaults.set(clamped, forKey: Keys.sceneModelOffsetX)
+        }
+    }
+
+    var sceneModelOffsetY: Double {
+        didSet {
+            let clamped = min(max(self.sceneModelOffsetY, -0.22), 0.22)
+            if clamped != self.sceneModelOffsetY {
+                self.sceneModelOffsetY = clamped
+                return
+            }
+            self.defaults.set(clamped, forKey: Keys.sceneModelOffsetY)
+        }
+    }
+
+    var personaMemoryCard: PersonaMemoryCard {
+        didSet {
+            do {
+                let sanitized = self.personaMemoryCard.sanitized
+                if sanitized != self.personaMemoryCard {
+                    self.personaMemoryCard = sanitized
+                    return
+                }
+                let data = try JSONEncoder().encode(sanitized)
+                self.defaults.set(data, forKey: Keys.personaMemoryCard)
+            } catch {
+                NSLog("KinkoClaw failed to encode persona card: %@", error.localizedDescription)
+            }
+        }
+    }
+
     var launchAtLogin: Bool {
         didSet {
             self.defaults.set(self.launchAtLogin, forKey: Keys.launchAtLogin)
@@ -428,10 +525,10 @@ final class PetCompanionSettings {
     var launchAtLoginErrorMessage: String?
 
     private init() {
-        let storedMode = GatewayConnectionProfile(rawValue: self.defaults.string(forKey: Keys.connectionMode) ?? "")
+        let storedMode = GatewayConnectionProfile.fromStoredValue(self.defaults.string(forKey: Keys.connectionMode))
         let storedPack = self.defaults.string(forKey: Keys.selectedPackId) ?? PetPackRegistry.defaultPack.id
         let tokenRef = self.defaults.string(forKey: Keys.gatewayAuthTokenRef) ?? "default"
-        let storedGatewayMode = GatewayConnectionProfile(rawValue: self.defaults.string(forKey: Keys.lastGatewayMode) ?? "")
+        let storedGatewayMode = GatewayConnectionProfile.fromStoredValue(self.defaults.string(forKey: Keys.lastGatewayMode))
         let resolvedMode = storedMode ?? .local
 
         self.connectionMode = resolvedMode
@@ -440,10 +537,27 @@ final class PetCompanionSettings {
         self.sshIdentityPath = self.defaults.string(forKey: Keys.sshIdentityPath) ?? ""
         self.directGatewayURL = self.defaults.string(forKey: Keys.directGatewayURL) ?? ""
         self.gatewayAuthTokenRef = tokenRef
-        self.gatewayAuthToken = GenericPasswordKeychainStore.loadString(
-            service: Keychain.service,
-            account: tokenRef) ?? ""
+        self.gatewayAuthToken = KinkoKeychainStore.loadString(service: Keychain.service, account: tokenRef) ?? ""
         self.selectedPackId = PetPackRegistry.pack(for: storedPack).id
+        let storedScale = self.defaults.object(forKey: Keys.sceneModelScale) != nil
+            ? self.defaults.double(forKey: Keys.sceneModelScale)
+            : 1
+        self.sceneModelScale = min(max(storedScale, 0.72), 1.4)
+        let storedOffsetX = self.defaults.object(forKey: Keys.sceneModelOffsetX) != nil
+            ? self.defaults.double(forKey: Keys.sceneModelOffsetX)
+            : 0
+        self.sceneModelOffsetX = min(max(storedOffsetX, -0.22), 0.22)
+        let storedOffsetY = self.defaults.object(forKey: Keys.sceneModelOffsetY) != nil
+            ? self.defaults.double(forKey: Keys.sceneModelOffsetY)
+            : 0
+        self.sceneModelOffsetY = min(max(storedOffsetY, -0.22), 0.22)
+        if let storedPersona = self.defaults.data(forKey: Keys.personaMemoryCard),
+           let decoded = try? JSONDecoder().decode(PersonaMemoryCard.self, from: storedPersona)
+        {
+            self.personaMemoryCard = decoded.sanitized
+        } else {
+            self.personaMemoryCard = .empty
+        }
         self.launchAtLogin = self.defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
         self.showMenuBarItem = true
         if self.defaults.object(forKey: Keys.windowOriginX) != nil,
@@ -469,13 +583,25 @@ final class PetCompanionSettings {
         PetPackRegistry.pack(for: self.selectedPackId)
     }
 
+    var selectedLive2DModelId: String {
+        get { self.selectedPackId }
+        set { self.selectedPackId = newValue }
+    }
+
+    var sceneModelFrame: PetPackManifest.StageSceneFrame {
+        .init(
+            scale: self.sceneModelScale,
+            offsetX: self.sceneModelOffsetX,
+            offsetY: self.sceneModelOffsetY)
+    }
+
     var isConnectionProfileComplete: Bool {
         switch self.connectionMode {
         case .local:
             true
         case .sshTunnel:
             !self.sshTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .direct:
+        case .directWss:
             !self.directGatewayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
@@ -487,7 +613,7 @@ final class PetCompanionSettings {
         case .sshTunnel:
             let trimmed = self.sshTarget.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "SSH target missing" : "SSH \(trimmed)"
-        case .direct:
+        case .directWss:
             let trimmed = self.directGatewayURL.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Gateway URL missing" : trimmed
         }
@@ -500,10 +626,17 @@ final class PetCompanionSettings {
     func markSuccessfulConnection() {
         self.lastConnectionSucceededAt = Date().timeIntervalSince1970
         self.lastGatewayMode = self.connectionMode
+        self.hasCompletedOnboarding = true
     }
 
     func resetWindowOrigin() {
         self.windowOrigin = nil
+    }
+
+    func resetSceneModelFrame() {
+        self.sceneModelScale = 1
+        self.sceneModelOffsetX = 0
+        self.sceneModelOffsetY = 0
     }
 
     private func persistString(_ value: String, key: String) {
@@ -521,15 +654,15 @@ final class PetCompanionSettings {
     }
 
     private func loadToken(ref: String) -> String {
-        GenericPasswordKeychainStore.loadString(service: Keychain.service, account: ref) ?? ""
+        KinkoKeychainStore.loadString(service: Keychain.service, account: ref) ?? ""
     }
 
     private func saveToken(_ token: String, ref: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            _ = GenericPasswordKeychainStore.delete(service: Keychain.service, account: ref)
+            _ = KinkoKeychainStore.delete(service: Keychain.service, account: ref)
         } else {
-            _ = GenericPasswordKeychainStore.saveString(trimmed, service: Keychain.service, account: ref)
+            _ = KinkoKeychainStore.saveString(trimmed, service: Keychain.service, account: ref)
         }
     }
 

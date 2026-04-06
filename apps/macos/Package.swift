@@ -68,18 +68,14 @@ let package = Package(
             ]),
         .executableTarget(
             name: "KinkoClaw",
-            dependencies: [
-                .product(name: "OpenClawKit", package: "OpenClawKit"),
-                .product(name: "OpenClawChatUI", package: "OpenClawKit"),
-                .product(name: "OpenClawProtocol", package: "OpenClawKit"),
-            ],
+            dependencies: [],
             path: "Sources/KinkoClaw",
             exclude: [
                 "Resources/Info.plist",
+                "Resources/Stage",
             ],
             resources: [
                 .copy("Resources/KinkoClaw.icns"),
-                .copy("Resources/Stage"),
                 .copy("Resources/StageRuntime"),
             ],
             swiftSettings: [

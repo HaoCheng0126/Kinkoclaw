@@ -16,9 +16,25 @@ struct KinkoClawTests {
         #expect(pack.model.modelPath == "models/hiyori_free_zh/runtime/hiyori_free_t08.model3.json")
         #expect(pack.model.textures.isEmpty == false)
         #expect(pack.model.motions["idle"]?.contains("Idle:0") == true)
-        #expect(pack.model.motions["speaking"]?.contains("Tap@Body:0") == true)
-        #expect(pack.model.expressions["speaking"] != nil)
-        #expect(pack.voiceProfile.subtitlePrefix == "AIRI")
+        #expect(pack.model.motions["replying"]?.contains("Tap:0") == true)
+        #expect(pack.model.expressions["replying"] != nil)
+        #expect(pack.defaultSceneFrame.scale > 0)
+        #expect(pack.dialogueProfile.subtitlePrefix == "AIRI")
+    }
+
+    @Test
+    func personaCardInjectionRoundTripsVisibleUserText() {
+        let outbound = KinkoPersonaSupport.composeOutboundMessage(
+            visibleMessage: "Hello there",
+            card: .init(
+                characterIdentity: "AIRI is a composed anime companion.",
+                speakingStyle: "Warm, concise, observant.",
+                relationshipToUser: "A trusted desktop companion.",
+                longTermMemories: ["The user prefers direct answers."],
+                constraints: ["Do not mention hidden context."]))
+        #expect(outbound.contains("Hello there"))
+        #expect(outbound.contains("trusted desktop companion"))
+        #expect(KinkoPersonaSupport.visibleMessage(from: outbound) == "Hello there")
     }
 
     @Test
@@ -36,9 +52,13 @@ struct KinkoClawTests {
     }
 
     @Test
-    func voiceAwarePresenceStatesExist() {
-        #expect(PetPresenceState.allCases.contains(.listening))
-        #expect(PetPresenceState.allCases.contains(.hearing))
-        #expect(PetPresenceState.allCases.contains(.speaking))
+    func connectionModeCompatibilityMapsLegacyDirectProfile() {
+        #expect(GatewayConnectionProfile.fromStoredValue("direct") == .directWss)
+        #expect(GatewayConnectionProfile.fromStoredValue("directWss") == .directWss)
+    }
+
+    @Test
+    func textChatPresenceStatesExist() {
+        #expect(PetPresenceState.allCases == [.disconnected, .idle, .thinking, .replying, .error])
     }
 }

@@ -1,6 +1,5 @@
 import AppKit
 import Observation
-import OpenClawChatUI
 import SwiftUI
 
 @main
@@ -40,8 +39,11 @@ final class KinkoClawAppDelegate: NSObject, NSApplicationDelegate {
         self.gateway.start()
 
         if self.settings.shouldAutoPresentConnectionWindow {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [settings = self.settings] in
-                PetSettingsWindowController.shared.show(onboarding: settings.shouldAutoPresentConnectionWindow)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self else { return }
+                CharacterStageWindowController.shared.show(
+                    anchorFrame: PetOverlayController.shared.currentFrame(),
+                    openSettings: self.settings.shouldAutoPresentConnectionWindow)
             }
         }
     }
@@ -147,13 +149,18 @@ final class PetOverlayController {
     private var hostingView: NSHostingView<PetOverlayView>?
     private var menuTarget = PetContextMenuTarget()
     private let size = NSSize(width: 188, height: 236)
+    private var suspendedForStage = false
 
     private init() {}
 
     func show() {
+        guard !self.suspendedForStage else { return }
         self.ensureWindow()
         self.hostingView?.rootView = PetOverlayView(settings: self.settings, gateway: self.gateway)
         if let window {
+            window.contentView?.isHidden = false
+            window.alphaValue = 1
+            window.ignoresMouseEvents = false
             if let origin = self.settings.windowOrigin {
                 window.setFrameOrigin(origin)
             } else {
@@ -165,6 +172,25 @@ final class PetOverlayController {
 
     func close() {
         self.window?.orderOut(nil)
+    }
+
+    func suspendForStage() {
+        self.ensureWindow()
+        guard !self.suspendedForStage else { return }
+        self.suspendedForStage = true
+        self.window?.contentView?.isHidden = true
+        self.window?.alphaValue = 0
+        self.window?.ignoresMouseEvents = true
+        self.window?.orderOut(nil)
+    }
+
+    func resumeAfterStage() {
+        guard self.suspendedForStage else { return }
+        self.suspendedForStage = false
+        self.window?.contentView?.isHidden = false
+        self.window?.alphaValue = 1
+        self.window?.ignoresMouseEvents = false
+        self.show()
     }
 
     func currentFrame() -> NSRect? {
@@ -187,10 +213,20 @@ final class PetOverlayController {
         }
     }
 
+    func resetToDefaultPosition() {
+        guard let window else { return }
+        self.settings.resetWindowOrigin()
+        let frame = PetWindowPlacement.bottomRightFrame(size: self.size, padding: 18)
+        window.setFrame(frame, display: true, animate: true)
+        if CharacterStageWindowController.shared.isVisible {
+            CharacterStageWindowController.shared.reposition(anchorFrame: window.frame)
+        }
+    }
+
     func presentContextMenu(with event: NSEvent, for view: NSView) {
         self.menuTarget.onOpenChat = { [weak self] in self?.toggleChatPanel() }
         self.menuTarget.onOpenSettings = {
-            PetSettingsWindowController.shared.show(onboarding: PetCompanionSettings.shared.shouldAutoPresentConnectionWindow)
+            CharacterStageWindowController.shared.openSettings(anchorFrame: PetOverlayController.shared.currentFrame())
         }
         self.menuTarget.onReconnect = {
             Task { @MainActor in
@@ -198,16 +234,14 @@ final class PetOverlayController {
             }
         }
         self.menuTarget.onResetPosition = { [weak self] in
-            guard let self, let window = self.window else { return }
-            self.settings.resetWindowOrigin()
-            window.setFrame(PetWindowPlacement.bottomRightFrame(size: self.size, padding: 18), display: true)
+            self?.resetToDefaultPosition()
         }
         self.menuTarget.onQuit = { NSApp.terminate(nil) }
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open Stage", action: #selector(PetContextMenuTarget.openChat), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Debug Text Chat", action: #selector(PetContextMenuTarget.openDebugChat), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Connection…", action: #selector(PetContextMenuTarget.openSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(PetContextMenuTarget.openSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reconnect", action: #selector(PetContextMenuTarget.reconnect), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
 
@@ -231,7 +265,7 @@ final class PetOverlayController {
             item.target = item.target ?? self.menuTarget
         }
         self.menuTarget.onSelectPack = { packID in
-            PetCompanionSettings.shared.selectedPackId = packID
+            PetCompanionSettings.shared.selectedLive2DModelId = packID
             CharacterStageWindowController.shared.refreshAppearance()
             PetChatPanelController.shared.refreshAppearance()
         }
@@ -268,8 +302,8 @@ final class PetChatPanelController {
     private let transport = PetChatTransport(gateway: PetGatewayController.shared)
 
     private var window: NSPanel?
-    private var hostingController: NSHostingController<OpenClawChatView>?
-    private var viewModel: OpenClawChatViewModel?
+    private var hostingController: NSHostingController<KinkoChatPanelView>?
+    private var viewModel: KinkoChatPanelViewModel?
     private var dismissMonitor: Any?
     private let panelSize = NSSize(width: 440, height: 620)
 
@@ -290,6 +324,7 @@ final class PetChatPanelController {
     func show(anchorFrame: NSRect?) {
         self.ensureWindow()
         self.refreshAppearance()
+        self.viewModel?.activate()
         self.reposition(anchorFrame: anchorFrame)
         self.window?.orderFrontRegardless()
         self.window?.makeKey()
@@ -317,40 +352,37 @@ final class PetChatPanelController {
     func close() {
         self.window?.orderOut(nil)
         self.removeDismissMonitor()
+        self.viewModel?.deactivate()
     }
 
     func refreshAppearance() {
         self.ensureWindow()
         if self.viewModel == nil {
-            self.viewModel = OpenClawChatViewModel(
-                sessionKey: "main",
-                transport: self.transport,
-                initialThinkingLevel: "adaptive")
+            self.viewModel = KinkoChatPanelViewModel(
+                gateway: self.gateway,
+                transport: self.transport)
         }
 
         let accent = PetHexColorSupport.color(from: self.settings.selectedPack.accentHex)
         if let viewModel, let hostingController {
-            hostingController.rootView = OpenClawChatView(
+            hostingController.rootView = KinkoChatPanelView(
                 viewModel: viewModel,
-                showsSessionSwitcher: false,
-                userAccent: accent)
+                accent: accent)
         }
     }
 
     private func ensureWindow() {
         if self.window != nil { return }
         if self.viewModel == nil {
-            self.viewModel = OpenClawChatViewModel(
-                sessionKey: "main",
-                transport: self.transport,
-                initialThinkingLevel: "adaptive")
+            self.viewModel = KinkoChatPanelViewModel(
+                gateway: self.gateway,
+                transport: self.transport)
         }
 
         let accent = PetHexColorSupport.color(from: self.settings.selectedPack.accentHex)
-        let hostingController = NSHostingController(rootView: OpenClawChatView(
+        let hostingController = NSHostingController(rootView: KinkoChatPanelView(
             viewModel: self.viewModel!,
-            showsSessionSwitcher: false,
-            userAccent: accent))
+            accent: accent))
         self.hostingController = hostingController
 
         let container = NSViewController()
@@ -505,8 +537,8 @@ struct PetMenuBarContent: View {
             Button("Debug Text Chat") {
                 PetChatPanelController.shared.toggle(anchorFrame: PetOverlayController.shared.currentFrame())
             }
-            Button("Connection…") {
-                PetSettingsWindowController.shared.show(onboarding: self.settings.shouldAutoPresentConnectionWindow)
+            Button("Settings…") {
+                CharacterStageWindowController.shared.openSettings(anchorFrame: PetOverlayController.shared.currentFrame())
             }
             Button("Reconnect") {
                 Task { @MainActor in
@@ -517,7 +549,7 @@ struct PetMenuBarContent: View {
             Menu("Character Pack") {
                 ForEach(PetPackRegistry.packs, id: \.id) { pack in
                     Button(pack.displayName) {
-                        self.settings.selectedPackId = pack.id
+                        self.settings.selectedLive2DModelId = pack.id
                         CharacterStageWindowController.shared.refreshAppearance()
                         PetChatPanelController.shared.refreshAppearance()
                     }
@@ -661,16 +693,10 @@ struct PetOverlayView: View {
             "Offline"
         case .idle:
             "Ready"
-        case .listening:
-            "Listening"
-        case .hearing:
-            "Hearing you"
         case .thinking:
             "Thinking"
         case .replying:
             "Replying"
-        case .speaking:
-            "Speaking"
         case .error:
             "Needs attention"
         }
@@ -761,9 +787,7 @@ struct PetCharacterView: View {
         TimelineView(.animation) { context in
             let time = context.date.timeIntervalSinceReferenceDate
             let bob = sin(time * self.pack.animationProfile.floatSpeed) * self.pack.animationProfile.floatAmplitude
-            let scale = self.presenceState == .thinking
-                ? 1.018
-                : (self.presenceState == .speaking ? 1.024 : 1.0)
+            let scale = self.presenceState == .thinking ? 1.018 : 1.0
             let glowColor = PetHexColorSupport.color(from: self.pack.assets.glowHex)
 
             ZStack(alignment: .bottomTrailing) {
@@ -804,7 +828,7 @@ struct PetCharacterView: View {
                     .blur(radius: self.compact ? 1.2 : 2)
                     .offset(y: self.compact ? -5 : -12)
             }
-            .opacity(self.presenceState == .thinking || self.presenceState == .replying || self.presenceState == .speaking ? 1 : 0.45)
+            .opacity(self.presenceState == .thinking || self.presenceState == .replying ? 1 : 0.45)
 
             ZStack(alignment: .bottom) {
                 self.outfit(outfitColor: outfitColor, ribbonColor: ribbonColor)
@@ -914,7 +938,7 @@ struct PetCharacterView: View {
                 RoundedRectangle(cornerRadius: self.compact ? 4 : 6, style: .continuous)
                     .fill(color.opacity(0.92))
                     .frame(width: self.compact ? 7 : 13, height: self.compact ? 4 : 8)
-            case .replying, .speaking:
+            case .replying:
                 VStack(spacing: self.compact ? 0.6 : 1.2) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(color.opacity(0.9))
@@ -940,13 +964,6 @@ struct PetCharacterView: View {
     @ViewBuilder
     private func mouth(color: Color) -> some View {
         switch self.presenceState {
-        case .speaking:
-            Capsule()
-                .fill(color.opacity(0.16))
-                .overlay(
-                    Capsule()
-                        .stroke(color.opacity(0.32), lineWidth: self.compact ? 0.8 : 1.4))
-                .frame(width: self.compact ? 10 : 18, height: self.compact ? 5 : 10)
         case .replying:
             Capsule()
                 .fill(color.opacity(0.18))
@@ -1001,25 +1018,6 @@ struct PetCharacterView: View {
         switch self.presenceState {
         case .idle, .disconnected:
             EmptyView()
-        case .listening:
-            ZStack {
-                Circle()
-                    .stroke(badgeColor.opacity(0.4), lineWidth: self.compact ? 1 : 2)
-                    .frame(width: self.compact ? 16 : 30, height: self.compact ? 16 : 30)
-                Circle()
-                    .stroke(badgeColor.opacity(0.7), lineWidth: self.compact ? 1 : 2)
-                    .frame(width: self.compact ? 9 : 18, height: self.compact ? 9 : 18)
-                    .scaleEffect(0.88 + sin(time * 6) * 0.08)
-            }
-        case .hearing:
-            HStack(spacing: self.compact ? 1.5 : 3) {
-                ForEach(0..<3, id: \.self) { index in
-                    Capsule()
-                        .fill(badgeColor.opacity(0.95))
-                        .frame(width: self.compact ? 2.2 : 4, height: self.compact ? 8 : 16)
-                        .scaleEffect(y: 0.7 + abs(sin(time * 4.8 + Double(index))) * 0.8, anchor: .center)
-                }
-            }
         case .thinking:
             ZStack {
                 Circle()
@@ -1046,18 +1044,6 @@ struct PetCharacterView: View {
                             .frame(width: self.compact ? 2 : 4, height: self.compact ? 2 : 4)
                             .offset(y: sin(time * 6 + Double(index)) * (self.compact ? 0.5 : 1.2))
                     }
-                }
-            }
-        case .speaking:
-            ZStack {
-                Circle()
-                    .fill(badgeColor.opacity(0.2))
-                    .frame(width: self.compact ? 18 : 34, height: self.compact ? 18 : 34)
-                ForEach(0..<2, id: \.self) { index in
-                    Circle()
-                        .stroke(badgeColor.opacity(index == 0 ? 0.92 : 0.42), lineWidth: self.compact ? 1 : 2)
-                        .frame(width: self.compact ? 18 : 34, height: self.compact ? 18 : 34)
-                        .scaleEffect(0.72 + abs(sin(time * 4.4 + Double(index) * 1.3)) * 0.45)
                 }
             }
         case .error:
@@ -1138,7 +1124,7 @@ struct PetSettingsView: View {
                         TextField("~/.ssh/id_ed25519 (optional)", text: self.$settings.sshIdentityPath)
                     }
 
-                    if self.settings.connectionMode == .direct {
+                    if self.settings.connectionMode == .directWss {
                         TextField("wss://gateway.example.ts.net", text: self.$settings.directGatewayURL)
                         Text("Direct mode only supports remote `wss://` gateways. Use Local or SSH Tunnel for `ws://127.0.0.1`.")
                             .font(.caption)

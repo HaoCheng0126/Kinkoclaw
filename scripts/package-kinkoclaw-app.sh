@@ -90,32 +90,6 @@ else
   echo "WARN: KinkoClaw resource bundle not found at $KINKOCLAW_BUNDLE" >&2
 fi
 
-echo "📦 Copying OpenClawKit resources"
-OPENCLAWKIT_BUNDLE="$BUILD_PATH/$BUILD_CONFIG/OpenClawKit_OpenClawKit.bundle"
-if [[ -d "$OPENCLAWKIT_BUNDLE" ]]; then
-  cp -R "$OPENCLAWKIT_BUNDLE" "$APP_ROOT/Contents/Resources/OpenClawKit_OpenClawKit.bundle"
-else
-  echo "WARN: OpenClawKit resource bundle not found at $OPENCLAWKIT_BUNDLE" >&2
-fi
-
-echo "📦 Copying Textual resources"
-TEXTUAL_BUNDLE=""
-for candidate in \
-  "$BUILD_PATH/$BUILD_CONFIG/textual_Textual.bundle" \
-  "$BUILD_PATH/$BUILD_CONFIG/Textual_Textual.bundle"
-do
-  if [[ -d "$candidate" ]]; then
-    TEXTUAL_BUNDLE="$candidate"
-    break
-  fi
-done
-if [[ -n "$TEXTUAL_BUNDLE" ]]; then
-  cp -R "$TEXTUAL_BUNDLE" "$APP_ROOT/Contents/Resources/"
-else
-  echo "ERROR: Textual resource bundle not found in $BUILD_PATH/$BUILD_CONFIG" >&2
-  exit 1
-fi
-
 echo "⏹  Stopping any running $APP_NAME"
 killall -q "$APP_NAME" 2>/dev/null || true
 

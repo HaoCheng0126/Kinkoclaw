@@ -6,13 +6,8 @@ enum StageRuntimeSupport {
     static let scheme = "kinkoclaw-stage"
 
     static func resolveRootURL(bundle: Bundle = .module) -> URL? {
-        if let indexURL = bundle.url(forResource: "index", withExtension: "html", subdirectory: "StageRuntime") {
-            return indexURL.deletingLastPathComponent()
-        }
-        if let indexURL = bundle.url(forResource: "index", withExtension: "html", subdirectory: "Stage") {
-            return indexURL.deletingLastPathComponent()
-        }
-        return nil
+        bundle.url(forResource: "index", withExtension: "html", subdirectory: "StageRuntime")?
+            .deletingLastPathComponent()
     }
 
     static func stageURL(mode: String? = nil) -> URL? {
@@ -25,13 +20,17 @@ enum StageRuntimeSupport {
         }
         return components.url
     }
+
+    static func installedModelsRootURL() -> URL? {
+        Live2DModelLibrary.libraryDirectory()
+    }
 }
 
 final class StageBundleSchemeHandler: NSObject, WKURLSchemeHandler {
     private let rootURL: URL
 
     init(rootURL: URL) {
-        self.rootURL = rootURL
+        self.rootURL = rootURL.standardizedFileURL
         super.init()
     }
 
@@ -41,8 +40,10 @@ final class StageBundleSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        let relativePath = requestURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let targetURL = self.rootURL.appendingPathComponent(relativePath.isEmpty ? "index.html" : relativePath)
+        guard let targetURL = self.resolveTargetURL(for: requestURL) else {
+            urlSchemeTask.didFailWithError(NSError(domain: NSURLErrorDomain, code: NSURLErrorNoPermissionsToReadFile))
+            return
+        }
 
         do {
             let data = try Data(contentsOf: targetURL)
@@ -61,6 +62,20 @@ final class StageBundleSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     func webView(_: WKWebView, stop _: any WKURLSchemeTask) {}
+
+    private func resolveTargetURL(for requestURL: URL) -> URL? {
+        let relativePath = requestURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if relativePath.hasPrefix("\(Live2DModelLibrary.mountedRootName)/") {
+            return Live2DModelLibrary.resolveMountedFileURL(for: relativePath)
+        }
+
+        let candidate = self.rootURL.appendingPathComponent(relativePath.isEmpty ? "index.html" : relativePath)
+            .standardizedFileURL
+        guard candidate.path == self.rootURL.path || candidate.path.hasPrefix(self.rootURL.path + "/") else {
+            return nil
+        }
+        return candidate
+    }
 
     private static func mimeType(for fileURL: URL) -> String {
         if let type = UTType(filenameExtension: fileURL.pathExtension),

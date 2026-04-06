@@ -30,11 +30,6 @@
     <key>OpenClawGitCommit</key>
     <string></string>
 
-    <key>NSMicrophoneUsageDescription</key>
-    <string>KinkoClaw uses your microphone for push-to-talk voice capture inside the AIRI-style stage.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>KinkoClaw converts your speech to text so the AIRI-style stage can send it to your OpenClaw assistant.</string>
-
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>

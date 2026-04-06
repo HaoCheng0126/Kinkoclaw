@@ -1,10 +1,6 @@
 import AppKit
-import AVFoundation
 import Foundation
-import OpenClawChatUI
-import OpenClawKit
-import OpenClawProtocol
-import Speech
+import UniformTypeIdentifiers
 import WebKit
 
 @MainActor
@@ -23,18 +19,34 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         let id: String
         let displayName: String
         let accentHex: String
+        let previewImage: String?
+        let sourceLabel: String
+        let isImported: Bool
         let assets: PetPackManifest.Assets
         let model: PetPackManifest.StageModelManifest
-        let voiceProfile: PetPackManifest.VoiceProfile
+        let defaultSceneFrame: PetPackManifest.StageSceneFrame
+        let dialogueProfile: PetPackManifest.DialogueProfile
         let interactionProfile: PetPackManifest.InteractionProfile
     }
 
-    private struct StageVoiceSnapshot: Encodable {
-        let presence: String
-        let transcript: String
-        let level: Double
-        let errorMessage: String?
-        let permissionsGranted: Bool
+    private struct StageConnectionPayload: Encodable {
+        let mode: String
+        let localPort: Int
+        let sshTarget: String
+        let sshIdentityPath: String
+        let directGatewayURL: String
+        let gatewayAuthTokenRef: String
+        let gatewayAuthToken: String
+        let summary: String
+    }
+
+    private struct StageSettingsPayload: Encodable {
+        let availablePacks: [StagePackPayload]
+        let selectedLive2DModelId: String
+        let sceneFrame: PetPackManifest.StageSceneFrame
+        let connection: StageConnectionPayload
+        let personaCard: PersonaMemoryCard
+        let settingsOpen: Bool
     }
 
     private struct StageBootstrapPayload: Encodable {
@@ -44,11 +56,15 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         let pack: StagePackPayload
         let messages: [StageMessage]
         let streamingAssistantText: String?
-        let voice: StageVoiceSnapshot
         let fallbackChatAvailable: Bool
+        let settings: StageSettingsPayload
     }
 
     private struct StageErrorPayload: Encodable {
+        let message: String
+    }
+
+    private struct StageToastPayload: Encodable {
         let message: String
     }
 
@@ -74,8 +90,8 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
     private let settings = PetCompanionSettings.shared
     private let gateway = PetGatewayController.shared
     private let transport = PetChatTransport(gateway: PetGatewayController.shared)
-    private let voiceRuntime = PetVoiceRuntime.shared
-    private let panelSize = NSSize(width: 980, height: 700)
+    private let panelSize = NSSize(width: 1180, height: 760)
+
     private var window: NSPanel?
     private var webView: WKWebView?
     private var bundleRootURL: URL?
@@ -83,26 +99,17 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
     private var subscriptionTask: Task<Void, Never>?
     private var lastMessages: [StageMessage] = []
     private var streamingAssistantText: String?
-    private var voiceSnapshot = PetVoiceRuntime.Snapshot()
-    private var lastSpokenAssistantText: String?
     private var webViewReady = false
+    private var settingsDrawerPresented = false
 
     private override init() {
         super.init()
-        self.voiceRuntime.onSnapshot = { [weak self] snapshot in
-            self?.handleVoiceSnapshot(snapshot)
-        }
-        self.voiceRuntime.onTranscriptCommitted = { [weak self] transcript in
-            Task { @MainActor in
-                await self?.sendMessage(transcript, source: "voice")
-            }
-        }
         self.subscriptionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let stream = self.gateway.subscribe()
-            for await push in stream {
+            for await event in stream {
                 if Task.isCancelled { return }
-                self.handle(push: push)
+                self.handle(event: event)
             }
         }
     }
@@ -123,20 +130,27 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         }
     }
 
-    func show(anchorFrame: NSRect?) {
+    func show(anchorFrame: NSRect?, openSettings: Bool = false) {
         self.ensureWindow()
+        self.settingsDrawerPresented = openSettings || self.settings.shouldAutoPresentConnectionWindow
+        PetOverlayController.shared.suspendForStage()
         self.reposition(anchorFrame: anchorFrame)
         self.window?.orderFrontRegardless()
         self.window?.makeKey()
         NSApp.activate(ignoringOtherApps: true)
         self.refreshAppearance()
         Task {
-            await self.syncHistory(ttsOnNewAssistant: false)
+            await self.syncHistory()
         }
+    }
+
+    func openSettings(anchorFrame: NSRect?) {
+        self.show(anchorFrame: anchorFrame, openSettings: true)
     }
 
     func close() {
         self.window?.orderOut(nil)
+        PetOverlayController.shared.resumeAfterStage()
     }
 
     func reposition(anchorFrame: NSRect?) {
@@ -159,24 +173,19 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
     func refreshAppearance() {
         self.publishStatus()
         self.publishPack()
+        self.publishSettings()
     }
 
     func windowWillClose(_: Notification) {
         self.close()
     }
 
-    func webView(
-        _ webView: WKWebView,
-        didFinish _: WKNavigation!)
-    {
+    func webView(_: WKWebView, didFinish _: WKNavigation!) {
         self.webViewReady = true
         self.publishBootstrap()
     }
 
-    func userContentController(
-        _ userContentController: WKUserContentController,
-        didReceive message: WKScriptMessage)
-    {
+    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == MessageNames.bridge else { return }
         self.handleBridgeMessage(message.body)
     }
@@ -192,33 +201,32 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         let schemeHandler = StageBundleSchemeHandler(rootURL: stageRootURL)
         self.stageSchemeHandler = schemeHandler
 
-        let config = WKWebViewConfiguration()
+        let configuration = WKWebViewConfiguration()
         let controller = WKUserContentController()
         controller.add(self, name: MessageNames.bridge)
-        let bootstrapScript = """
-        (() => {
-          if (window.KinkoClawNativeBridge) return;
-          window.KinkoClawNativeBridge = {
-            postMessage(payload) {
-              try {
-                window.webkit?.messageHandlers?.\(MessageNames.bridge)?.postMessage(payload);
-              } catch (error) {
-                console.error("KinkoClawNativeBridge.postMessage failed", error);
-              }
-            }
-          };
-        })();
-        """
         controller.addUserScript(
             WKUserScript(
-                source: bootstrapScript,
+                source: """
+                (() => {
+                  if (window.KinkoClawNativeBridge) return;
+                  window.KinkoClawNativeBridge = {
+                    postMessage(payload) {
+                      try {
+                        window.webkit?.messageHandlers?.\(MessageNames.bridge)?.postMessage(payload);
+                      } catch (error) {
+                        console.error("KinkoClawNativeBridge.postMessage failed", error);
+                      }
+                    }
+                  };
+                })();
+                """,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true))
-        config.userContentController = controller
-        config.preferences.isElementFullscreenEnabled = true
-        config.setURLSchemeHandler(schemeHandler, forURLScheme: StageRuntimeSupport.scheme)
+        configuration.userContentController = controller
+        configuration.preferences.isElementFullscreenEnabled = true
+        configuration.setURLSchemeHandler(schemeHandler, forURLScheme: StageRuntimeSupport.scheme)
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         webView.setValue(false, forKey: "drawsBackground")
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -293,29 +301,24 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
             self.webViewReady = true
             self.publishBootstrap()
         case "chat.send":
-            let text = (payload["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let text = Self.stringValue(payload["text"])
             guard !text.isEmpty else { return }
             Task {
                 await self.sendMessage(text, source: "stage")
             }
-        case "voice.begin":
-            Task {
-                await self.voiceRuntime.beginCapture(localeID: self.settings.selectedPack.voiceProfile.localeID)
-            }
-        case "voice.end":
-            Task {
-                await self.voiceRuntime.endCapture(sendTranscript: true)
-            }
-        case "voice.cancel":
-            Task {
-                await self.voiceRuntime.cancelCapture()
-            }
-        case "voice.stopSpeaking":
-            Task {
-                await self.voiceRuntime.stopSpeaking()
-            }
-        case "settings.open":
-            PetSettingsWindowController.shared.show(onboarding: self.settings.shouldAutoPresentConnectionWindow)
+        case "settings.visibility":
+            self.settingsDrawerPresented = Self.boolValue(payload["open"])
+            self.publishSettings()
+        case "settings.saveConnection":
+            self.saveConnectionSettings(from: payload)
+        case "settings.saveCharacter":
+            self.saveCharacterSettings(from: payload)
+        case "settings.importModel":
+            self.importLive2DModel()
+        case "settings.savePersona":
+            self.savePersonaSettings(from: payload)
+        case "settings.resetPetPosition":
+            PetOverlayController.shared.resetToDefaultPosition()
         case "gateway.reconnect":
             Task { @MainActor in
                 _ = await self.gateway.reconnect(reason: "stage-bridge")
@@ -329,30 +332,129 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         }
     }
 
-    private func handle(push: GatewayPush) {
-        switch push {
+    private func saveConnectionSettings(from payload: [String: Any]) {
+        if let rawMode = Self.stringOptional(payload["mode"]),
+           let mode = GatewayConnectionProfile.fromStoredValue(rawMode)
+        {
+            self.settings.connectionMode = mode
+        }
+
+        if let localPort = Self.intValue(payload["localPort"]) {
+            self.settings.localPort = localPort
+        }
+        if let sshTarget = Self.stringOptional(payload["sshTarget"]) {
+            self.settings.sshTarget = sshTarget
+        }
+        if let sshIdentityPath = Self.stringOptional(payload["sshIdentityPath"]) {
+            self.settings.sshIdentityPath = sshIdentityPath
+        }
+        if let directGatewayURL = Self.stringOptional(payload["directGatewayURL"]) {
+            self.settings.directGatewayURL = directGatewayURL
+        }
+        if let tokenRef = Self.stringOptional(payload["gatewayAuthTokenRef"]) {
+            self.settings.gatewayAuthTokenRef = tokenRef.isEmpty ? "default" : tokenRef
+        }
+        if let token = Self.stringOptional(payload["gatewayAuthToken"]) {
+            self.settings.gatewayAuthToken = token
+        }
+
+        self.settings.hasCompletedOnboarding = true
+        self.settingsDrawerPresented = true
+        self.publishSettings()
+        self.publishStatus()
+        Task { @MainActor in
+            _ = await self.gateway.reconnect(reason: "stage-settings-save")
+        }
+    }
+
+    private func saveCharacterSettings(from payload: [String: Any]) {
+        if let modelId = Self.stringOptional(payload["selectedLive2DModelId"]), !modelId.isEmpty {
+            self.settings.selectedLive2DModelId = modelId
+        }
+        if let scale = Self.doubleValue(payload["sceneModelScale"]) {
+            self.settings.sceneModelScale = scale
+        }
+        if let offsetX = Self.doubleValue(payload["sceneModelOffsetX"]) {
+            self.settings.sceneModelOffsetX = offsetX
+        }
+        if let offsetY = Self.doubleValue(payload["sceneModelOffsetY"]) {
+            self.settings.sceneModelOffsetY = offsetY
+        }
+
+        self.publishPack()
+        self.publishSettings()
+    }
+
+    private func importLive2DModel() {
+        let panel = NSOpenPanel()
+        panel.title = "导入 Live2D 模型"
+        panel.message = "选择模型 ZIP，或选择包含 .model3.json 的文件夹。"
+        panel.prompt = "导入"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if #available(macOS 12.0, *) {
+            panel.allowedContentTypes = [.zip]
+        }
+
+        let presentImport: (URL) -> Void = { url in
+            do {
+                let importedPack = try Live2DModelLibrary.importModelPack(from: url)
+                self.settings.selectedLive2DModelId = importedPack.id
+                self.settings.resetSceneModelFrame()
+                self.publishPack()
+                self.publishSettings()
+                self.publishToast("已导入模型：\(importedPack.displayName)")
+            } catch {
+                self.publishError(error.localizedDescription)
+            }
+        }
+
+        if let window {
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                presentImport(url)
+            }
+        } else if panel.runModal() == .OK, let url = panel.url {
+            presentImport(url)
+        }
+    }
+
+    private func savePersonaSettings(from payload: [String: Any]) {
+        let card = PersonaMemoryCard(
+            characterIdentity: Self.stringValue(payload["characterIdentity"]),
+            speakingStyle: Self.stringValue(payload["speakingStyle"]),
+            relationshipToUser: Self.stringValue(payload["relationshipToUser"]),
+            longTermMemories: Self.stringListValue(payload["longTermMemories"]),
+            constraints: Self.stringListValue(payload["constraints"]))
+        self.settings.personaMemoryCard = card
+        self.publishSettings()
+    }
+
+    private func handle(event: GatewayEvent) {
+        switch event {
         case let .snapshot(hello):
             self.publishStatus()
-            if let mainKey = hello.snapshot.sessiondefaults?["mainSessionKey"]?.value as? String,
+            if let mainKey = hello.snapshot.sessionDefaults?["mainSessionKey"]?.value as? String,
                !mainKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 self.publish("gateway.session", payload: ["sessionKey": mainKey])
             }
             Task {
-                await self.syncHistory(ttsOnNewAssistant: false)
+                await self.syncHistory()
             }
-        case let .event(event):
-            self.handle(event: event)
+        case let .event(frame):
+            self.handle(frame: frame)
         case .seqGap:
             self.publishStatus()
         }
     }
 
-    private func handle(event: EventFrame) {
-        switch event.event {
+    private func handle(frame: EventFrame) {
+        switch frame.event {
         case "chat":
-            guard let payload = event.payload,
-                  let chat = try? Self.decodePayload(payload, as: OpenClawChatEventPayload.self)
+            guard let payload = frame.payload,
+                  let chat = try? Self.decodePayload(payload, as: ChatEventPayload.self)
             else {
                 self.publishStatus()
                 return
@@ -361,17 +463,11 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
             switch chat.state {
             case "queued", "input", "dispatch", "running":
                 self.publishStatus()
-            case "final":
+            case "final", "aborted":
                 self.streamingAssistantText = nil
                 self.publishAssistantStream()
                 Task {
-                    await self.syncHistory(ttsOnNewAssistant: true)
-                }
-            case "aborted":
-                self.streamingAssistantText = nil
-                self.publishAssistantStream()
-                Task {
-                    await self.syncHistory(ttsOnNewAssistant: false)
+                    await self.syncHistory()
                 }
             case "error":
                 self.streamingAssistantText = nil
@@ -381,10 +477,13 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
                 break
             }
         case "agent":
-            guard let payload = event.payload,
-                  let agent = try? Self.decodePayload(payload, as: OpenClawAgentEventPayload.self)
-            else { return }
-            guard agent.stream == "assistant" else { return }
+            guard let payload = frame.payload,
+                  let agent = try? Self.decodePayload(payload, as: AgentEventPayload.self),
+                  agent.stream == "assistant"
+            else {
+                return
+            }
+
             if let text = agent.data["text"]?.value as? String {
                 self.streamingAssistantText = text
                 self.publishAssistantStream()
@@ -425,41 +524,14 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         }
     }
 
-    private func syncHistory(ttsOnNewAssistant: Bool) async {
+    private func syncHistory() async {
         do {
             let history = try await self.transport.requestHistory(sessionKey: "main")
-            let messages = Self.stageMessages(from: history.messages ?? [])
-            self.lastMessages = messages
+            self.lastMessages = Self.stageMessages(from: history.messages ?? [])
             self.publishMessages()
-
-            if ttsOnNewAssistant,
-               let lastAssistant = messages.last(where: { $0.role == "assistant" }),
-               lastAssistant.text != self.lastSpokenAssistantText
-            {
-                self.lastSpokenAssistantText = lastAssistant.text
-                await self.voiceRuntime.speak(
-                    text: lastAssistant.text,
-                    localeID: self.settings.selectedPack.voiceProfile.localeID)
-            }
         } catch {
             self.publishError(error.localizedDescription)
         }
-    }
-
-    private func handleVoiceSnapshot(_ snapshot: PetVoiceRuntime.Snapshot) {
-        self.voiceSnapshot = snapshot
-        switch snapshot.presence {
-        case .listening, .hearing, .speaking:
-            self.gateway.applyStagePresence(snapshot.presence)
-        case .error:
-            self.gateway.applyStagePresence(.error)
-        case .idle:
-            self.gateway.restorePresenceAfterStageOverride()
-        default:
-            break
-        }
-        self.publishVoice()
-        self.publishStatus()
     }
 
     private func publishBootstrap() {
@@ -473,8 +545,8 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
                 pack: Self.stagePackPayload(from: self.settings.selectedPack),
                 messages: self.lastMessages,
                 streamingAssistantText: self.streamingAssistantText,
-                voice: self.stageVoiceSnapshot(),
-                fallbackChatAvailable: true))
+                fallbackChatAvailable: true,
+                settings: self.settingsPayload()))
     }
 
     private func publishStatus() {
@@ -490,31 +562,42 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         self.publish("stage.pack", payload: Self.stagePackPayload(from: self.settings.selectedPack))
     }
 
+    private func publishSettings() {
+        self.publish("stage.settings", payload: self.settingsPayload())
+    }
+
     private func publishMessages() {
         self.publish("stage.messages", payload: ["messages": self.lastMessages])
     }
 
     private func publishAssistantStream() {
-        self.publish(
-            "stage.assistant-stream",
-            payload: StageAssistantStreamPayload(text: self.streamingAssistantText))
-    }
-
-    private func publishVoice() {
-        self.publish("stage.voice", payload: self.stageVoiceSnapshot())
+        self.publish("stage.assistant-stream", payload: StageAssistantStreamPayload(text: self.streamingAssistantText))
     }
 
     private func publishError(_ message: String) {
         self.publish("stage.error", payload: StageErrorPayload(message: message))
     }
 
-    private func stageVoiceSnapshot() -> StageVoiceSnapshot {
-        StageVoiceSnapshot(
-            presence: self.voiceSnapshot.presence.rawValue,
-            transcript: self.voiceSnapshot.transcript,
-            level: self.voiceSnapshot.level,
-            errorMessage: self.voiceSnapshot.errorMessage,
-            permissionsGranted: self.voiceSnapshot.permissionsGranted)
+    private func publishToast(_ message: String) {
+        self.publish("stage.toast", payload: StageToastPayload(message: message))
+    }
+
+    private func settingsPayload() -> StageSettingsPayload {
+        StageSettingsPayload(
+            availablePacks: PetPackRegistry.packs.map { Self.stagePackPayload(from: $0) },
+            selectedLive2DModelId: self.settings.selectedLive2DModelId,
+            sceneFrame: self.settings.sceneModelFrame,
+            connection: StageConnectionPayload(
+                mode: self.settings.connectionMode.rawValue,
+                localPort: self.settings.localPort,
+                sshTarget: self.settings.sshTarget,
+                sshIdentityPath: self.settings.sshIdentityPath,
+                directGatewayURL: self.settings.directGatewayURL,
+                gatewayAuthTokenRef: self.settings.gatewayAuthTokenRef,
+                gatewayAuthToken: self.settings.gatewayAuthToken,
+                summary: self.settings.connectionSummary),
+            personaCard: self.settings.personaMemoryCard,
+            settingsOpen: self.settingsDrawerPresented)
     }
 
     private func publish<T: Encodable>(_ type: String, payload: T) {
@@ -552,15 +635,19 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
             id: pack.id,
             displayName: pack.displayName,
             accentHex: pack.accentHex,
+            previewImage: pack.previewImage,
+            sourceLabel: pack.model.modelPath.hasPrefix("\(Live2DModelLibrary.mountedRootName)/") ? "已导入" : "内置",
+            isImported: pack.model.modelPath.hasPrefix("\(Live2DModelLibrary.mountedRootName)/"),
             assets: pack.assets,
             model: pack.model,
-            voiceProfile: pack.voiceProfile,
+            defaultSceneFrame: pack.defaultSceneFrame,
+            dialogueProfile: pack.dialogueProfile,
             interactionProfile: pack.interactionProfile)
     }
 
-    private static func stageMessages(from raw: [AnyCodable]) -> [StageMessage] {
-        raw.compactMap { item in
-            guard let message = try? Self.decodePayload(item, as: OpenClawChatMessage.self) else { return nil }
+    private static func stageMessages(from rawMessages: [AnyCodable]) -> [StageMessage] {
+        rawMessages.compactMap { item in
+            guard let message = try? Self.decodePayload(item, as: ChatMessage.self) else { return nil }
             let role = message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard role == "assistant" || role == "user" || role == "tool" else { return nil }
 
@@ -569,287 +656,90 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
-            guard !text.isEmpty else { return nil }
+            let displayText = role == "user" ? KinkoPersonaSupport.visibleMessage(from: text) : text
+            guard !displayText.isEmpty else { return nil }
 
             return StageMessage(
                 id: message.id.uuidString,
                 role: role == "tool" ? "assistant" : role,
-                text: text,
+                text: displayText,
                 timestamp: message.timestamp ?? Date().timeIntervalSince1970,
                 pending: false)
         }
     }
-}
 
-@MainActor
-final class PetVoiceRuntime: NSObject {
-    struct Snapshot: Equatable {
-        var presence: PetPresenceState = .idle
-        var transcript = ""
-        var level = 0.0
-        var errorMessage: String?
-        var permissionsGranted = false
+    private static func stringValue(_ raw: Any?) -> String {
+        Self.stringOptional(raw) ?? ""
     }
 
-    static let shared = PetVoiceRuntime()
-
-    var onSnapshot: ((Snapshot) -> Void)?
-    var onTranscriptCommitted: ((String) -> Void)?
-
-    private var recognizer: SFSpeechRecognizer?
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
-    private var audioEngine: AVAudioEngine?
-    private var tapInstalled = false
-    private var transcriptBuffer = ""
-    private var snapshot = Snapshot()
-
-    private override init() {
-        super.init()
-    }
-
-    func beginCapture(localeID: String?) async {
-        guard self.snapshot.presence != .listening && self.snapshot.presence != .hearing else { return }
-        await self.stopSpeaking()
-
-        let permissionsGranted = await Self.ensureVoicePermissions(interactive: true)
-        self.snapshot.permissionsGranted = permissionsGranted
-        guard permissionsGranted else {
-            self.setError("Microphone or Speech Recognition permission is missing.")
-            return
-        }
-
-        let locale = Locale(identifier: localeID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? localeID!
-            : Locale.current.identifier)
-        let recognizer = SFSpeechRecognizer(locale: locale)
-        guard let recognizer, recognizer.isAvailable else {
-            self.setError("Speech recognizer is unavailable right now.")
-            return
-        }
-
-        self.snapshot.errorMessage = nil
-        self.snapshot.transcript = ""
-        self.snapshot.level = 0
-        self.snapshot.presence = .listening
-        self.publishSnapshot()
-
-        self.recognizer = recognizer
-        self.transcriptBuffer = ""
-        self.recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        self.recognitionRequest?.shouldReportPartialResults = true
-
-        if self.audioEngine == nil {
-            self.audioEngine = AVAudioEngine()
-        }
-
-        guard let request = self.recognitionRequest, let audioEngine = self.audioEngine else {
-            self.setError("Failed to start audio capture.")
-            return
-        }
-
-        let input = audioEngine.inputNode
-        if self.tapInstalled {
-            input.removeTap(onBus: 0)
-            self.tapInstalled = false
-        }
-
-        let format = input.outputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            guard let self else { return }
-            request.append(buffer)
-            let level = Self.audioLevel(from: buffer)
-            Task { @MainActor in
-                self.snapshot.level = level
-                if self.snapshot.presence == .listening && level > 0.025 {
-                    self.snapshot.presence = .hearing
-                }
-                self.publishSnapshot()
-            }
-        }
-        self.tapInstalled = true
-
-        self.recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor in
-                guard let self else { return }
-                if let text = result?.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !text.isEmpty
-                {
-                    self.transcriptBuffer = text
-                    self.snapshot.transcript = text
-                    self.snapshot.presence = .hearing
-                    self.publishSnapshot()
-                }
-
-                if let error {
-                    if (error as NSError).code != 216 {
-                        self.setError(error.localizedDescription)
-                    }
-                } else if result?.isFinal == true {
-                    Task {
-                        await self.endCapture(sendTranscript: true)
-                    }
-                }
-            }
-        }
-
-        do {
-            audioEngine.prepare()
-            try audioEngine.start()
-        } catch {
-            self.setError(error.localizedDescription)
-            await self.cancelCapture()
-        }
-    }
-
-    func endCapture(sendTranscript: Bool) async {
-        let transcript = (self.transcriptBuffer.isEmpty ? self.snapshot.transcript : self.transcriptBuffer)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        self.recognitionRequest?.endAudio()
-        self.audioEngine?.stop()
-        if self.tapInstalled {
-            self.audioEngine?.inputNode.removeTap(onBus: 0)
-            self.tapInstalled = false
-        }
-        try? await Task.sleep(nanoseconds: 350_000_000)
-        self.recognitionTask?.finish()
-        self.recognitionTask?.cancel()
-        self.recognitionTask = nil
-        self.recognitionRequest = nil
-        self.recognizer = nil
-        self.snapshot.level = 0
-        self.snapshot.presence = .idle
-        self.publishSnapshot()
-
-        if sendTranscript, !transcript.isEmpty {
-            self.onTranscriptCommitted?(transcript)
-        }
-        self.snapshot.transcript = ""
-        self.publishSnapshot()
-    }
-
-    func cancelCapture() async {
-        self.recognitionRequest?.endAudio()
-        self.audioEngine?.stop()
-        if self.tapInstalled {
-            self.audioEngine?.inputNode.removeTap(onBus: 0)
-            self.tapInstalled = false
-        }
-        self.recognitionTask?.cancel()
-        self.recognitionTask = nil
-        self.recognitionRequest = nil
-        self.recognizer = nil
-        self.snapshot.level = 0
-        self.snapshot.transcript = ""
-        self.snapshot.presence = .idle
-        self.publishSnapshot()
-    }
-
-    func speak(text: String, localeID: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        self.snapshot.presence = .speaking
-        self.snapshot.errorMessage = nil
-        self.snapshot.transcript = trimmed
-        self.publishSnapshot()
-
-        do {
-            try await TalkSystemSpeechSynthesizer.shared.speak(
-                text: trimmed,
-                language: localeID,
-                onStart: { [weak self] in
-                    Task { @MainActor in
-                        self?.snapshot.presence = .speaking
-                        self?.publishSnapshot()
-                    }
-                })
-            self.snapshot.presence = .idle
-            self.snapshot.transcript = ""
-            self.publishSnapshot()
-        } catch {
-            if case TalkSystemSpeechSynthesizer.SpeakError.canceled = error {
-                self.snapshot.presence = .idle
-                self.snapshot.transcript = ""
-                self.publishSnapshot()
-                return
-            }
-            self.setError(error.localizedDescription)
-        }
-    }
-
-    func stopSpeaking() async {
-        TalkSystemSpeechSynthesizer.shared.stop()
-        if self.snapshot.presence == .speaking {
-            self.snapshot.presence = .idle
-            self.snapshot.transcript = ""
-            self.publishSnapshot()
-        }
-    }
-
-    private func setError(_ message: String) {
-        self.snapshot.presence = .error
-        self.snapshot.errorMessage = message
-        self.publishSnapshot()
-    }
-
-    private func publishSnapshot() {
-        self.onSnapshot?(self.snapshot)
-    }
-
-    private static func audioLevel(from buffer: AVAudioPCMBuffer) -> Double {
-        guard let channelData = buffer.floatChannelData else { return 0 }
-        let frameLength = Int(buffer.frameLength)
-        guard frameLength > 0 else { return 0 }
-
-        let channelCount = Int(buffer.format.channelCount)
-        var total: Double = 0
-        for channel in 0..<channelCount {
-            let samples = channelData[channel]
-            var channelTotal: Double = 0
-            for index in 0..<frameLength {
-                let sample = Double(samples[index])
-                channelTotal += sample * sample
-            }
-            total += channelTotal / Double(frameLength)
-        }
-
-        let meanSquare = total / Double(max(channelCount, 1))
-        return min(1, sqrt(meanSquare) * 8.5)
-    }
-
-    private static func ensureVoicePermissions(interactive: Bool) async -> Bool {
-        let microphoneGranted = await self.ensureMicrophone(interactive: interactive)
-        let speechGranted = await self.ensureSpeech(interactive: interactive)
-        return microphoneGranted && speechGranted
-    }
-
-    private static func ensureMicrophone(interactive: Bool) async -> Bool {
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        switch status {
-        case .authorized:
-            return true
-        case .notDetermined:
-            guard interactive else { return false }
-            return await AVCaptureDevice.requestAccess(for: .audio)
+    private static func stringOptional(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String:
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let value as NSString:
+            return String(value).trimmingCharacters(in: .whitespacesAndNewlines)
         default:
-            return false
+            return nil
         }
     }
 
-    private static func ensureSpeech(interactive: Bool) async -> Bool {
-        let status = SFSpeechRecognizer.authorizationStatus()
-        if status == .authorized {
-            return true
+    private static func intValue(_ raw: Any?) -> Int? {
+        switch raw {
+        case let value as Int:
+            value
+        case let value as NSNumber:
+            value.intValue
+        case let value as String:
+            Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            nil
         }
-        guard status == .notDetermined, interactive else { return false }
-        await withUnsafeContinuation { (cont: UnsafeContinuation<Void, Never>) in
-            SFSpeechRecognizer.requestAuthorization { _ in
-                DispatchQueue.main.async {
-                    cont.resume()
-                }
-            }
+    }
+
+    private static func doubleValue(_ raw: Any?) -> Double? {
+        switch raw {
+        case let value as Double:
+            value
+        case let value as NSNumber:
+            value.doubleValue
+        case let value as String:
+            Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            nil
         }
-        return SFSpeechRecognizer.authorizationStatus() == .authorized
+    }
+
+    private static func boolValue(_ raw: Any?) -> Bool {
+        switch raw {
+        case let value as Bool:
+            value
+        case let value as NSNumber:
+            value.boolValue
+        case let value as String:
+            ["1", "true", "yes", "on"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        default:
+            false
+        }
+    }
+
+    private static func stringListValue(_ raw: Any?) -> [String] {
+        switch raw {
+        case let array as [String]:
+            return array
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let array as [NSString]:
+            return array
+                .map(String.init)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let value as String:
+            return value
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        default:
+            return []
+        }
     }
 }

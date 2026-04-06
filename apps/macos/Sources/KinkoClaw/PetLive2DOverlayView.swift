@@ -59,14 +59,6 @@ struct PetLive2DOverlayView: NSViewRepresentable {
             static let bridge = "kinkoClawPetStageBridge"
         }
 
-        private struct VoicePayload: Encodable {
-            let presence: String
-            let transcript: String
-            let level: Double
-            let errorMessage: String?
-            let permissionsGranted: Bool
-        }
-
         private struct BootstrapPayload: Encodable {
             let connectionStatus: String
             let statusMessage: String
@@ -74,7 +66,6 @@ struct PetLive2DOverlayView: NSViewRepresentable {
             let pack: PetPackManifest
             let messages: [String]
             let streamingAssistantText: String
-            let voice: VoicePayload
             let fallbackChatAvailable: Bool
         }
 
@@ -156,7 +147,6 @@ struct PetLive2DOverlayView: NSViewRepresentable {
                 if let snapshot = self.latestSnapshot, let webView = self.webView {
                     self.publishBootstrap(snapshot, to: webView)
                     self.publishStatus(snapshot, to: webView)
-                    self.publishVoice(snapshot.presenceState, statusMessage: snapshot.statusMessage, to: webView)
                 }
             }
         }
@@ -180,12 +170,10 @@ struct PetLive2DOverlayView: NSViewRepresentable {
                 self.publishBootstrap(snapshot, to: webView)
             } else {
                 self.publishStatus(snapshot, to: webView)
-                self.publishVoice(snapshot.presenceState, statusMessage: snapshot.statusMessage, to: webView)
             }
         }
 
         private func publishBootstrap(_ snapshot: Snapshot, to webView: WKWebView) {
-            let voice = self.voicePayload(for: snapshot.presenceState, statusMessage: snapshot.statusMessage)
             let payload = BootstrapPayload(
                 connectionStatus: snapshot.connectionStatus,
                 statusMessage: snapshot.statusMessage,
@@ -193,7 +181,6 @@ struct PetLive2DOverlayView: NSViewRepresentable {
                 pack: snapshot.pack,
                 messages: [],
                 streamingAssistantText: "",
-                voice: voice,
                 fallbackChatAvailable: false)
             self.publish("stage.bootstrap", payload: payload, to: webView)
         }
@@ -206,27 +193,6 @@ struct PetLive2DOverlayView: NSViewRepresentable {
                     statusMessage: snapshot.statusMessage,
                     presenceState: snapshot.presenceState.rawValue),
                 to: webView)
-        }
-
-        private func publishVoice(_ presenceState: PetPresenceState, statusMessage: String, to webView: WKWebView) {
-            self.publish("stage.voice", payload: self.voicePayload(for: presenceState, statusMessage: statusMessage), to: webView)
-        }
-
-        private func voicePayload(for presenceState: PetPresenceState, statusMessage: String) -> VoicePayload {
-            let voicePresence: String
-            switch presenceState {
-            case .listening, .hearing, .speaking, .error:
-                voicePresence = presenceState.rawValue
-            default:
-                voicePresence = "idle"
-            }
-
-            return VoicePayload(
-                presence: voicePresence,
-                transcript: "",
-                level: presenceState == .speaking ? 0.22 : 0,
-                errorMessage: presenceState == .error ? statusMessage : nil,
-                permissionsGranted: false)
         }
 
         private func publish<T: Encodable>(_ type: String, payload: T, to webView: WKWebView) {

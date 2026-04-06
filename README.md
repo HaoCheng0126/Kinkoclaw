@@ -1,34 +1,35 @@
-# 🦞 OpenClaw — Personal AI Assistant
+# KinkoClaw — macOS Desktop Pet Client for OpenClaw
 
 <p align="center">
-    <picture>
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text-dark.svg">
-        <img src="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text.svg" alt="OpenClaw" width="500">
-    </picture>
+  <strong>Menu bar companion + desktop pet + AIRI-style Live2D stage for your existing OpenClaw Gateway.</strong>
 </p>
 
 <p align="center">
-  <strong>EXFOLIATE! EXFOLIATE!</strong>
+  Connect to a local or remote OpenClaw gateway and talk to the <code>main</code> session through a lightweight macOS shell.
 </p>
 
 <p align="center">
-  <a href="https://github.com/openclaw/openclaw/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/openclaw/openclaw/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/openclaw/openclaw/releases"><img src="https://img.shields.io/github/v/release/openclaw/openclaw?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="https://discord.gg/clawd"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
+  <a href="https://github.com/HaoCheng0126/Kinkoclaw"><img src="https://img.shields.io/badge/Repo-KinkoClaw-black?style=for-the-badge" alt="KinkoClaw repo"></a>
+  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/Gateway-OpenClaw-blue?style=for-the-badge" alt="OpenClaw gateway"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**OpenClaw** is a _personal AI assistant_ you run on your own devices.
-It answers you on the channels you already use (WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, iMessage, BlueBubbles, IRC, Microsoft Teams, Matrix, Feishu, LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo, Zalo Personal, WeChat, WebChat). It can speak and listen on macOS/iOS/Android, and can render a live Canvas you control. The Gateway is just the control plane — the product is the assistant.
+**KinkoClaw** is a thin macOS client for people who already run OpenClaw locally or on a remote server.
+It does not install or manage the gateway for you. Instead, it connects to an existing OpenClaw Gateway over Local (`ws://127.0.0.1`), SSH Tunnel, or Direct `wss://`, and turns the `main` session into a desktop companion you can keep on screen.
 
-If you want a personal, single-user assistant that feels local, fast, and always-on, this is it.
+Current KinkoClaw focus:
 
-[Website](https://openclaw.ai) · [Docs](https://docs.openclaw.ai) · [Vision](VISION.md) · [DeepWiki](https://deepwiki.com/openclaw/openclaw) · [Getting Started](https://docs.openclaw.ai/start/getting-started) · [Updating](https://docs.openclaw.ai/install/updating) · [Showcase](https://docs.openclaw.ai/start/showcase) · [FAQ](https://docs.openclaw.ai/help/faq) · [Onboarding](https://docs.openclaw.ai/start/wizard) · [Nix](https://github.com/openclaw/nix-openclaw) · [Docker](https://docs.openclaw.ai/install/docker) · [Discord](https://discord.gg/clawd)
+- macOS menu bar app that stays out of the Dock
+- Floating desktop pet with click-to-open stage
+- AIRI-inspired Live2D stage plus a lightweight chat shell
+- Local persona memory card that shapes replies before sending them to OpenClaw
+- Import and switch Live2D model packs
+- Connection settings for Local / SSH Tunnel / Direct `wss`
 
-Preferred setup: run `openclaw onboard` in your terminal.
-OpenClaw Onboard guides you step by step through setting up the gateway, workspace, channels, and skills. It is the recommended CLI setup path and works on **macOS, Linux, and Windows (via WSL2; strongly recommended)**.
-Works with npm, pnpm, or bun.
-New install? Start here: [Getting started](https://docs.openclaw.ai/start/getting-started)
+The current product focus lives under `apps/macos/Sources/KinkoClaw` and `apps/macos/stage-live2d`.
+This repository is still being extracted from the upstream OpenClaw codebase, so some of the documentation below still describes upstream OpenClaw rather than the standalone KinkoClaw client.
+
+[Upstream OpenClaw](https://github.com/openclaw/openclaw) · [OpenClaw Docs](https://docs.openclaw.ai) · [KinkoClaw Repo](https://github.com/HaoCheng0126/Kinkoclaw)
 
 ## Sponsors
 

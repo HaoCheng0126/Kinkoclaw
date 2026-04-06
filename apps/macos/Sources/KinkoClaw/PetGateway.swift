@@ -1,9 +1,6 @@
 import Foundation
 import Network
 import Observation
-import OpenClawChatUI
-import OpenClawKit
-import OpenClawProtocol
 import OSLog
 
 enum PetGatewayConnectionStatus: Equatable {
@@ -78,7 +75,7 @@ enum PetSSHTargetParser {
         }
 
         let normalizedUser = user?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let normalizedUser, normalizedUser.isEmpty == false,
+        if let normalizedUser, !normalizedUser.isEmpty,
            normalizedUser.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.union(.controlCharacters)) != nil
         {
             return nil
@@ -248,17 +245,18 @@ final class PetGatewayController {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    private var channel: GatewayChannelActor?
+    private var transport: GatewayTransport?
     private var currentEndpoint: PetResolvedGatewayEndpoint?
     private var tunnel: PetRemotePortTunnel?
-    private var subscribers: [UUID: AsyncStream<GatewayPush>.Continuation] = [:]
+    private var subscribers: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var healthTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var pendingRunIDs = Set<String>()
     private var currentSessionKey = "main"
 
     var connectionStatus: PetGatewayConnectionStatus = .disconnected
     var presenceState: PetPresenceState = .disconnected
-    var statusMessage: String = "Not connected"
+    var statusMessage = "Not connected"
     var lastErrorMessage: String?
 
     private init() {}
@@ -280,13 +278,18 @@ final class PetGatewayController {
     func stop() {
         self.healthTask?.cancel()
         self.healthTask = nil
+        self.reconnectTask?.cancel()
+        self.reconnectTask = nil
         Task {
-            await self.shutdownChannel()
+            await self.shutdownTransport()
         }
     }
 
     @discardableResult
     func reconnect(reason: String) async -> Bool {
+        self.reconnectTask?.cancel()
+        self.reconnectTask = nil
+
         guard self.settings.isConnectionProfileComplete else {
             self.connectionStatus = .disconnected
             self.presenceState = .disconnected
@@ -302,7 +305,7 @@ final class PetGatewayController {
 
         do {
             let endpoint = try await self.resolveEndpoint()
-            try await self.configureChannelIfNeeded(endpoint: endpoint)
+            try await self.configureTransportIfNeeded(endpoint: endpoint)
             _ = try await self.request(method: "health", params: nil, timeoutMs: 10_000, allowRecovery: false)
             self.currentEndpoint = endpoint
             self.connectionStatus = .connected
@@ -322,7 +325,7 @@ final class PetGatewayController {
         }
     }
 
-    func subscribe() -> AsyncStream<GatewayPush> {
+    func subscribe() -> AsyncStream<GatewayEvent> {
         let id = UUID()
         return AsyncStream { continuation in
             self.subscribers[id] = continuation
@@ -340,7 +343,7 @@ final class PetGatewayController {
         timeoutMs: Double? = nil,
         allowRecovery: Bool = true) async throws -> Data
     {
-        if self.channel == nil {
+        if self.transport == nil {
             guard await self.reconnect(reason: "request:\(method)") else {
                 throw NSError(
                     domain: "PetGatewayController",
@@ -350,13 +353,13 @@ final class PetGatewayController {
         }
 
         do {
-            guard let channel = self.channel else {
+            guard let transport = self.transport else {
                 throw NSError(
                     domain: "PetGatewayController",
                     code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "Gateway channel unavailable"])
+                    userInfo: [NSLocalizedDescriptionKey: "Gateway transport unavailable"])
             }
-            let data = try await channel.request(method: method, params: params, timeoutMs: timeoutMs)
+            let data = try await transport.request(method: method, params: params, timeoutMs: timeoutMs)
             self.connectionStatus = .connected
             if self.presenceState == .disconnected {
                 self.presenceState = .idle
@@ -371,8 +374,8 @@ final class PetGatewayController {
                 guard await self.reconnect(reason: "ssh-recover:\(method)") else {
                     throw error
                 }
-                guard let channel = self.channel else { throw error }
-                return try await channel.request(method: method, params: params, timeoutMs: timeoutMs)
+                guard let transport = self.transport else { throw error }
+                return try await transport.request(method: method, params: params, timeoutMs: timeoutMs)
             }
 
             if self.connectionStatus != .connecting {
@@ -413,9 +416,8 @@ final class PetGatewayController {
         switch self.settings.connectionMode {
         case .local:
             let port = min(max(self.settings.localPort, 1), 65535)
-            let url = URL(string: "ws://127.0.0.1:\(port)")!
             return PetResolvedGatewayEndpoint(
-                url: url,
+                url: URL(string: "ws://127.0.0.1:\(port)")!,
                 token: self.settings.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 fingerprint: "local:\(port):\(self.settings.gatewayAuthTokenRef)",
                 description: "Local gateway on 127.0.0.1:\(port)")
@@ -433,13 +435,12 @@ final class PetGatewayController {
                 remotePort: self.settings.localPort,
                 preferredLocalPort: nil)
             let localPort = Int(self.tunnel?.localPort ?? 0)
-            let url = URL(string: "ws://127.0.0.1:\(localPort)")!
             return PetResolvedGatewayEndpoint(
-                url: url,
+                url: URL(string: "ws://127.0.0.1:\(localPort)")!,
                 token: self.settings.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 fingerprint: "ssh:\(parsed.displayString):\(parsed.port):\(localPort):\(self.settings.gatewayAuthTokenRef)",
                 description: "SSH tunnel via \(parsed.displayString)")
-        case .direct:
+        case .directWss:
             let trimmed = self.settings.directGatewayURL.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, let url = Self.normalizedDirectURL(from: trimmed) else {
                 throw NSError(
@@ -455,31 +456,21 @@ final class PetGatewayController {
         }
     }
 
-    private func configureChannelIfNeeded(endpoint: PetResolvedGatewayEndpoint) async throws {
-        if self.currentEndpoint == endpoint, self.channel != nil {
+    private func configureTransportIfNeeded(endpoint: PetResolvedGatewayEndpoint) async throws {
+        if self.currentEndpoint == endpoint, self.transport != nil {
             return
         }
 
-        await self.shutdownChannel()
+        await self.shutdownTransport()
         self.currentEndpoint = endpoint
-        self.channel = GatewayChannelActor(
+        self.transport = GatewayTransport(
             url: endpoint.url,
             token: endpoint.token,
-            session: nil,
-            pushHandler: { [weak self] push in
+            pushHandler: { [weak self] event in
                 await MainActor.run {
-                    self?.handle(push: push)
+                    self?.handle(event: event)
                 }
             },
-            connectOptions: GatewayConnectOptions(
-                role: "operator",
-                scopes: ["operator.read", "operator.write"],
-                caps: [],
-                commands: [],
-                permissions: [:],
-                clientId: "kinkoclaw-\(InstanceIdentity.instanceId)",
-                clientMode: "ui",
-                clientDisplayName: "KinkoClaw"),
             disconnectHandler: { [weak self] reason in
                 await MainActor.run {
                     self?.handleDisconnect(reason: reason)
@@ -487,35 +478,29 @@ final class PetGatewayController {
             })
     }
 
-    private func handle(push: GatewayPush) {
+    private func handle(event: GatewayEvent) {
         self.connectionStatus = .connected
         if self.presenceState == .disconnected {
             self.presenceState = .idle
         }
 
-        switch push {
+        switch event {
         case let .snapshot(hello):
             let mainKey = Self.mainSessionKey(from: hello)
             self.currentSessionKey = mainKey
             self.statusMessage = self.currentEndpoint?.description ?? "Connected"
-            if self.pendingRunIDs.isEmpty,
-               self.presenceState != .replying,
-               self.presenceState != .thinking,
-               self.presenceState != .speaking,
-               self.presenceState != .listening,
-               self.presenceState != .hearing
-            {
+            if self.pendingRunIDs.isEmpty, self.presenceState != .replying, self.presenceState != .thinking {
                 self.presenceState = .idle
             }
-        case let .event(event):
-            self.handleGatewayEvent(event)
+        case let .event(frame):
+            self.handleGatewayEvent(frame)
         case .seqGap:
             self.pendingRunIDs.removeAll()
             self.presenceState = .idle
         }
 
         for continuation in self.subscribers.values {
-            continuation.yield(push)
+            continuation.yield(event)
         }
     }
 
@@ -523,32 +508,27 @@ final class PetGatewayController {
         switch event.event {
         case "health":
             if let payload = event.payload,
-               let health = try? self.decode(OpenClawGatewayHealthOK.self, from: payload),
+               let health = try? self.decode(GatewayHealthOK.self, from: payload),
                health.ok == false
             {
                 self.connectionStatus = .error("Gateway reported unhealthy status")
                 self.presenceState = .error
-            } else if self.pendingRunIDs.isEmpty,
-                      self.presenceState != .replying,
-                      self.presenceState != .speaking,
-                      self.presenceState != .listening,
-                      self.presenceState != .hearing
-            {
+            } else if self.pendingRunIDs.isEmpty, self.presenceState != .replying {
                 self.presenceState = .idle
             }
         case "chat":
             guard let payload = event.payload,
-                  let chat = try? self.decode(OpenClawChatEventPayload.self, from: payload)
+                  let chat = try? self.decode(ChatEventPayload.self, from: payload)
             else { return }
             let sessionKey = chat.sessionKey?.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesMain = sessionKey == nil || Self.matchesMainSessionKey(sessionKey!, current: self.currentSessionKey)
             guard matchesMain else { return }
 
-            if let runId = chat.runId, !runId.isEmpty {
+            if let runID = chat.runId, !runID.isEmpty {
                 if chat.state == "final" || chat.state == "aborted" || chat.state == "error" {
-                    self.pendingRunIDs.remove(runId)
+                    self.pendingRunIDs.remove(runID)
                 } else {
-                    self.pendingRunIDs.insert(runId)
+                    self.pendingRunIDs.insert(runID)
                 }
             }
 
@@ -565,7 +545,7 @@ final class PetGatewayController {
             }
         case "agent":
             guard let payload = event.payload,
-                  let agent = try? self.decode(OpenClawAgentEventPayload.self, from: payload)
+                  let agent = try? self.decode(AgentEventPayload.self, from: payload)
             else { return }
             if agent.stream == "assistant" {
                 self.presenceState = .replying
@@ -586,6 +566,17 @@ final class PetGatewayController {
         self.lastErrorMessage = reason
         self.presenceState = .disconnected
         self.statusMessage = reason
+        self.scheduleReconnectAfterDisconnect()
+    }
+
+    private func scheduleReconnectAfterDisconnect() {
+        guard self.settings.isConnectionProfileComplete else { return }
+        self.reconnectTask?.cancel()
+        self.reconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard let self, !Task.isCancelled else { return }
+            _ = await self.reconnect(reason: "socket-disconnect")
+        }
     }
 
     private func startHealthLoop() {
@@ -599,10 +590,7 @@ final class PetGatewayController {
                     if self.connectionStatus.isConnected,
                        self.pendingRunIDs.isEmpty,
                        self.presenceState != .replying,
-                       self.presenceState != .thinking,
-                       self.presenceState != .speaking,
-                       self.presenceState != .listening,
-                       self.presenceState != .hearing
+                       self.presenceState != .thinking
                     {
                         self.presenceState = .idle
                     }
@@ -616,33 +604,28 @@ final class PetGatewayController {
         }
     }
 
-    private func shutdownChannel() async {
-        if let channel {
-            await channel.shutdown()
+    private func shutdownTransport() async {
+        if let transport {
+            await transport.shutdown()
         }
-        self.channel = nil
+        self.transport = nil
     }
 
     private func resetTransport() async {
-        await self.shutdownChannel()
+        await self.shutdownTransport()
         self.tunnel?.terminate()
         self.tunnel = nil
         self.currentEndpoint = nil
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from payload: OpenClawProtocol.AnyCodable) throws -> T {
+    private func decode<T: Decodable>(_ type: T.Type, from payload: AnyCodable) throws -> T {
         let data = try self.encoder.encode(payload)
         return try self.decoder.decode(type, from: data)
     }
 
     nonisolated static func normalizedDirectURL(from raw: String) -> URL? {
         guard let components = URLComponents(string: raw) else { return nil }
-        switch components.scheme?.lowercased() {
-        case "wss":
-            break
-        default:
-            return nil
-        }
+        guard components.scheme?.lowercased() == "wss" else { return nil }
         return components.url
     }
 
@@ -657,7 +640,7 @@ final class PetGatewayController {
     }
 
     private static func mainSessionKey(from hello: HelloOk) -> String {
-        if let mainSessionKey = hello.snapshot.sessiondefaults?["mainSessionKey"]?.value as? String,
+        if let mainSessionKey = hello.snapshot.sessionDefaults?["mainSessionKey"]?.value as? String,
            !mainSessionKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             return mainSessionKey
@@ -673,37 +656,33 @@ private extension String {
     }
 }
 
-final class PetChatTransport: OpenClawChatTransport, @unchecked Sendable {
+final class PetChatTransport: @unchecked Sendable {
     private unowned let gateway: PetGatewayController
 
     init(gateway: PetGatewayController) {
         self.gateway = gateway
     }
 
-    func requestHistory(sessionKey: String) async throws -> OpenClawChatHistoryPayload {
+    func requestHistory(sessionKey: String) async throws -> ChatHistoryResponse {
         let data = try await self.gateway.request(
             method: "chat.history",
             params: ["sessionKey": AnyCodable(sessionKey)],
             timeoutMs: 15_000)
-        return try JSONDecoder().decode(OpenClawChatHistoryPayload.self, from: data)
+        return try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
     }
 
-    func listModels() async throws -> [OpenClawChatModelChoice] {
-        do {
-            let data = try await self.gateway.request(
-                method: "models.list",
-                params: [:],
-                timeoutMs: 15_000)
-            let result = try JSONDecoder().decode(ModelsListResult.self, from: data)
-            return result.models.map {
-                OpenClawChatModelChoice(
-                    modelID: $0.id,
-                    name: $0.name,
-                    provider: $0.provider,
-                    contextWindow: $0.contextwindow)
-            }
-        } catch {
-            return []
+    func listModels() async throws -> [ChatModelChoice] {
+        let data = try await self.gateway.request(
+            method: "models.list",
+            params: [:],
+            timeoutMs: 15_000)
+        let result = try JSONDecoder().decode(ModelsListResult.self, from: data)
+        return result.models.map {
+            ChatModelChoice(
+                modelID: $0.id,
+                name: $0.name,
+                provider: $0.provider,
+                contextWindow: $0.contextWindow)
         }
     }
 
@@ -712,43 +691,48 @@ final class PetChatTransport: OpenClawChatTransport, @unchecked Sendable {
         message: String,
         thinking: String,
         idempotencyKey: String,
-        attachments: [OpenClawChatAttachmentPayload]) async throws -> OpenClawChatSendResponse
+        attachments: [ChatAttachmentPayload]) async throws -> ChatSendResponse
     {
         await MainActor.run {
             self.gateway.prepareForOutgoingMessage()
         }
+
+        let outboundMessage = await MainActor.run {
+            KinkoPersonaSupport.composeOutboundMessage(
+                visibleMessage: message,
+                card: PetCompanionSettings.shared.personaMemoryCard)
+        }
+
         var params: [String: AnyCodable] = [
             "sessionKey": AnyCodable(sessionKey),
-            "message": AnyCodable(message),
+            "message": AnyCodable(outboundMessage),
             "thinking": AnyCodable(thinking),
             "idempotencyKey": AnyCodable(idempotencyKey),
         ]
         if !attachments.isEmpty {
             params["attachments"] = AnyCodable(attachments)
         }
+
         let data = try await self.gateway.request(method: "chat.send", params: params, timeoutMs: 30_000)
-        return try JSONDecoder().decode(OpenClawChatSendResponse.self, from: data)
+        return try JSONDecoder().decode(ChatSendResponse.self, from: data)
     }
 
-    func abortRun(sessionKey: String, runId: String) async throws {
+    func abortRun(sessionKey: String, runID: String) async throws {
         _ = try await self.gateway.request(
             method: "chat.abort",
             params: [
                 "sessionKey": AnyCodable(sessionKey),
-                "runId": AnyCodable(runId),
+                "runId": AnyCodable(runID),
             ],
             timeoutMs: 10_000)
     }
 
-    func listSessions(limit: Int?) async throws -> OpenClawChatSessionsListResponse {
-        let count = limit ?? 1
-        let entry = try self.mainSessionEntry()
-        return OpenClawChatSessionsListResponse(
-            ts: Date().timeIntervalSince1970 * 1000,
-            path: "main",
-            count: count,
-            defaults: OpenClawChatSessionsDefaults(model: nil, contextTokens: nil, mainSessionKey: "main"),
-            sessions: [entry])
+    func listSessions(limit: Int?) async throws -> ChatSessionsListResponse {
+        let data = try await self.gateway.request(
+            method: "sessions.list",
+            params: ["limit": AnyCodable(limit ?? 1)],
+            timeoutMs: 15_000)
+        return try JSONDecoder().decode(ChatSessionsListResponse.self, from: data)
     }
 
     func setSessionModel(sessionKey: String, model: String?) async throws {
@@ -773,99 +757,11 @@ final class PetChatTransport: OpenClawChatTransport, @unchecked Sendable {
             params: nil,
             timeoutMs: Double(timeoutMs),
             allowRecovery: true)
-        if let decoded = try? JSONDecoder().decode(OpenClawGatewayHealthOK.self, from: data),
+        if let decoded = try? JSONDecoder().decode(GatewayHealthOK.self, from: data),
            let ok = decoded.ok
         {
             return ok
         }
         return true
-    }
-
-    func events() -> AsyncStream<OpenClawChatTransportEvent> {
-        return AsyncStream { continuation in
-            let task = Task {
-                let source = await MainActor.run {
-                    self.gateway.subscribe()
-                }
-                for await push in source {
-                    if Task.isCancelled { return }
-                    if let mapped = Self.mapPush(push) {
-                        continuation.yield(mapped)
-                    }
-                }
-            }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
-    }
-
-    func setActiveSessionKey(_: String) async throws {}
-
-    func resetSession(sessionKey: String) async throws {
-        _ = try await self.gateway.request(
-            method: "sessions.reset",
-            params: ["key": AnyCodable(sessionKey)],
-            timeoutMs: 10_000)
-    }
-
-    func compactSession(sessionKey: String) async throws {
-        _ = try await self.gateway.request(
-            method: "sessions.compact",
-            params: ["key": AnyCodable(sessionKey)],
-            timeoutMs: 10_000)
-    }
-
-    private static func mapPush(_ push: GatewayPush) -> OpenClawChatTransportEvent? {
-        switch push {
-        case let .snapshot(snapshot):
-            let ok = (try? JSONDecoder().decode(
-                OpenClawGatewayHealthOK.self,
-                from: JSONEncoder().encode(snapshot.snapshot.health)))?.ok ?? true
-            return .health(ok: ok)
-        case let .event(event):
-            switch event.event {
-            case "health":
-                guard let payload = event.payload else { return nil }
-                let ok = (try? JSONDecoder().decode(
-                    OpenClawGatewayHealthOK.self,
-                    from: JSONEncoder().encode(payload)))?.ok ?? true
-                return .health(ok: ok)
-            case "tick":
-                return .tick
-            case "chat":
-                guard let payload = event.payload,
-                      let chat = try? JSONDecoder().decode(
-                          OpenClawChatEventPayload.self,
-                          from: JSONEncoder().encode(payload))
-                else { return nil }
-                return .chat(chat)
-            case "agent":
-                guard let payload = event.payload,
-                      let agent = try? JSONDecoder().decode(
-                          OpenClawAgentEventPayload.self,
-                          from: JSONEncoder().encode(payload))
-                else { return nil }
-                return .agent(agent)
-            default:
-                return nil
-            }
-        case .seqGap(_, _):
-            return .seqGap
-        }
-    }
-
-    private func mainSessionEntry() throws -> OpenClawChatSessionEntry {
-        let payload: [String: Any] = [
-            "key": "main",
-            "kind": "direct",
-            "displayName": "Main",
-            "surface": "desktop-pet",
-            "subject": "KinkoClaw",
-            "updatedAt": Date().timeIntervalSince1970 * 1000,
-            "sessionId": "main",
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        return try JSONDecoder().decode(OpenClawChatSessionEntry.self, from: data)
     }
 }
