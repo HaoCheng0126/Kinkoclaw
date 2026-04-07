@@ -42,22 +42,12 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
 
     private struct StageSettingsPayload: Encodable {
         let availablePacks: [StagePackPayload]
-        let availableThemes: [StageThemePayload]
         let selectedLive2DModelId: String
-        let selectedThemeId: String
+        let appearanceMode: String
         let sceneFrame: PetPackManifest.StageSceneFrame
         let connection: StageConnectionPayload
         let personaCard: PersonaMemoryCard
         let settingsOpen: Bool
-    }
-
-    private struct StageThemePayload: Encodable {
-        let id: String
-        let displayName: String
-        let subtitle: String
-        let accentHex: String
-        let assets: PetPackManifest.Assets
-        let animationProfile: PetPackManifest.AnimationProfile
     }
 
     private struct StageBootstrapPayload: Encodable {
@@ -101,7 +91,7 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
     private let settings = PetCompanionSettings.shared
     private let gateway = PetGatewayController.shared
     private let transport = PetChatTransport(gateway: PetGatewayController.shared)
-    private let panelSize = NSSize(width: 1120, height: 720)
+    private let panelSize = NSSize(width: 800, height: 620)
 
     private var window: NSWindow?
     private var webView: WKWebView?
@@ -147,6 +137,7 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         PetOverlayController.shared.suspendForStage()
         self.reposition(anchorFrame: anchorFrame)
         self.window?.makeKeyAndOrderFront(nil)
+        self.window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         self.refreshAppearance()
         Task {
@@ -279,7 +270,7 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         window.contentViewController = container
         window.delegate = self
         window.hidesOnDeactivate = false
-        window.contentMinSize = NSSize(width: 920, height: 620)
+        window.contentMinSize = NSSize(width: 800, height: 620)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = false
         window.isMovableByWindowBackground = true
@@ -332,8 +323,10 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
             self.importLive2DModel()
         case "settings.savePersona":
             self.savePersonaSettings(from: payload)
-        case "settings.resetPetPosition":
-            PetOverlayController.shared.resetToDefaultPosition()
+        case "settings.resetCharacterPosition":
+            self.settings.resetSceneModelFrame()
+            self.publishPack()
+            self.publishSettings()
         case "gateway.reconnect":
             Task { @MainActor in
                 _ = await self.gateway.reconnect(reason: "stage-bridge")
@@ -386,8 +379,10 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
         if let modelId = Self.stringOptional(payload["selectedLive2DModelId"]), !modelId.isEmpty {
             self.settings.selectedLive2DModelId = modelId
         }
-        if let themeID = Self.stringOptional(payload["selectedThemeId"]), !themeID.isEmpty {
-            self.settings.selectedThemeId = StageThemeRegistry.theme(for: themeID).id
+        if let appearanceMode = Self.stringOptional(payload["appearanceMode"]),
+           let mode = StageAppearanceMode(rawValue: appearanceMode)
+        {
+            self.settings.appearanceMode = mode
         }
         if let scale = Self.doubleValue(payload["sceneModelScale"]) {
             self.settings.sceneModelScale = scale
@@ -604,9 +599,8 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
     private func settingsPayload() -> StageSettingsPayload {
         StageSettingsPayload(
             availablePacks: self.settings.availablePacks.map { Self.stagePackPayload(from: $0) },
-            availableThemes: StageThemeRegistry.allThemes.map { Self.stageThemePayload(from: $0) },
             selectedLive2DModelId: self.settings.selectedLive2DModelId,
-            selectedThemeId: self.settings.selectedThemeId,
+            appearanceMode: self.settings.appearanceMode.rawValue,
             sceneFrame: self.settings.sceneModelFrame,
             connection: StageConnectionPayload(
                 mode: self.settings.connectionMode.rawValue,
@@ -664,16 +658,6 @@ final class CharacterStageWindowController: NSObject, WKNavigationDelegate, WKSc
             defaultSceneFrame: pack.defaultSceneFrame,
             dialogueProfile: pack.dialogueProfile,
             interactionProfile: pack.interactionProfile)
-    }
-
-    private static func stageThemePayload(from theme: StageThemeManifest) -> StageThemePayload {
-        StageThemePayload(
-            id: theme.id,
-            displayName: theme.displayName,
-            subtitle: theme.subtitle,
-            accentHex: theme.accentHex,
-            assets: theme.assets,
-            animationProfile: theme.animationProfile)
     }
 
     private static func stageMessages(from rawMessages: [AnyCodable]) -> [StageMessage] {

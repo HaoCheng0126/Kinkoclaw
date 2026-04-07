@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_BUNDLE="${1:-dist/OpenClaw.app}"
+APP_BUNDLE="${1:-dist/KinkoClaw.app}"
 IDENTITY="${SIGN_IDENTITY:-}"
 TIMESTAMP_MODE="${CODESIGN_TIMESTAMP:-auto}"
 DISABLE_LIBRARY_VALIDATION="${DISABLE_LIBRARY_VALIDATION:-0}"
 SKIP_TEAM_ID_CHECK="${SKIP_TEAM_ID_CHECK:-0}"
-ENT_TMP_BASE=$(mktemp -t openclaw-entitlements-base.XXXXXX)
-ENT_TMP_APP_BASE=$(mktemp -t openclaw-entitlements-app-base.XXXXXX)
-ENT_TMP_RUNTIME=$(mktemp -t openclaw-entitlements-runtime.XXXXXX)
+ENT_TMP_BASE=$(mktemp -t kinkoclaw-entitlements-base.XXXXXX)
+ENT_TMP_APP_BASE=$(mktemp -t kinkoclaw-entitlements-app-base.XXXXXX)
+ENT_TMP_RUNTIME=$(mktemp -t kinkoclaw-entitlements-runtime.XXXXXX)
 
 if [[ "${APP_BUNDLE}" == "--help" || "${APP_BUNDLE}" == "-h" ]]; then
   cat <<'HELP'
@@ -264,8 +264,8 @@ main_executable_path() {
     return 0
   fi
 
-  if [[ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]]; then
-    echo "$APP_BUNDLE/Contents/MacOS/OpenClaw"
+  if [[ -f "$APP_BUNDLE/Contents/MacOS/KinkoClaw" ]]; then
+    echo "$APP_BUNDLE/Contents/MacOS/KinkoClaw"
     return 0
   fi
 

@@ -7,6 +7,8 @@ const stageMode = new URLSearchParams(window.location.search).get("mode") === "p
 
 document.documentElement.dataset.mode = stageMode;
 document.body.dataset.mode = stageMode;
+document.documentElement.dataset.appearance = "light";
+document.body.dataset.appearance = "light";
 
 const app = createApp(App, { stageMode });
 const vm = app.mount("#app");

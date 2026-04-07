@@ -119,8 +119,7 @@ export class Live2DStageRuntime {
     this.lastPointerAt = 0;
     this.pointerFocusX = 0;
     this.pointerFocusY = 0;
-    this.naturalModelWidth = 0;
-    this.naturalModelHeight = 0;
+    this.naturalModelBounds = null;
     this.loadGeneration = 0;
     this.playLoop = this.playLoop.bind(this);
   }
@@ -171,8 +170,7 @@ export class Live2DStageRuntime {
     this.model = null;
     this.motionPresence = null;
     this.activeExpression = null;
-    this.naturalModelWidth = 0;
-    this.naturalModelHeight = 0;
+    this.naturalModelBounds = null;
   }
 
   async sync({ pack, presenceState, sceneFrame, mouthTarget }) {
@@ -188,7 +186,7 @@ export class Live2DStageRuntime {
     await this.init();
 
     if (needsReload) {
-      this.showFallback("正在加载 AIRI Live2D…");
+      this.showFallback("正在加载 Live2D…");
       this.destroyModel();
       this.modelURL = nextURL;
       const generation = ++this.loadGeneration;
@@ -206,10 +204,14 @@ export class Live2DStageRuntime {
         }
       }
       this.model = model;
-      this.naturalModelWidth = Math.max(1, model.width);
-      this.naturalModelHeight = Math.max(1, model.height);
-      this.model.anchor.set(0.5, 1);
       this.app.stage.addChild(model);
+      const bounds = model.getLocalBounds?.() ?? { x: 0, y: 0, width: model.width, height: model.height };
+      this.naturalModelBounds = {
+        x: Number(bounds.x) || 0,
+        y: Number(bounds.y) || 0,
+        width: Math.max(1, Number(bounds.width) || model.width || 1),
+        height: Math.max(1, Number(bounds.height) || model.height || 1),
+      };
       this.hideFallback();
     }
 
@@ -226,27 +228,35 @@ export class Live2DStageRuntime {
 
     const width = this.host.clientWidth || this.app.renderer.width;
     const height = this.host.clientHeight || this.app.renderer.height;
-    const modelWidth = Math.max(1, this.naturalModelWidth || this.model.width);
-    const modelHeight = Math.max(1, this.naturalModelHeight || this.model.height);
+    const bounds = this.naturalModelBounds ?? {
+      x: 0,
+      y: 0,
+      width: Math.max(1, this.model.width),
+      height: Math.max(1, this.model.height),
+    };
+    const modelWidth = Math.max(1, bounds.width);
+    const modelHeight = Math.max(1, bounds.height);
+    const visibleCenterX = bounds.x + bounds.width / 2;
+    const visibleBottomY = bounds.y + bounds.height;
     const defaultFrame = this.pack?.defaultSceneFrame ?? { scale: 1, offsetX: 0, offsetY: 0 };
     const userFrame = this.sceneFrame ?? { scale: 1, offsetX: 0, offsetY: 0 };
 
     if (this.isPetMode) {
-      const scale = Math.min((width * 1.12) / modelWidth, (height * 1.08) / modelHeight) * 1.04;
+      const scale = Math.min((width * 0.82) / modelWidth, (height * 0.9) / modelHeight);
       this.model.scale.set(scale);
-      this.model.x = width * 0.5;
-      this.model.y = height * 1.015;
+      this.model.x = width * 0.5 - visibleCenterX * scale;
+      this.model.y = height * 0.985 - visibleBottomY * scale;
       return;
     }
 
     const frameScale = clamp((defaultFrame.scale ?? 1) * (userFrame.scale ?? 1), 0.72, 1.42);
     const offsetX = clamp((defaultFrame.offsetX ?? 0) + (userFrame.offsetX ?? 0), -0.24, 0.24);
     const offsetY = clamp((defaultFrame.offsetY ?? 0) + (userFrame.offsetY ?? 0), -0.24, 0.24);
-    const scale = Math.min((width * 0.66) / modelWidth, (height * 0.8) / modelHeight) * frameScale;
+    const scale = Math.min((width * 0.9) / modelWidth, (height * 0.95) / modelHeight) * frameScale;
 
     this.model.scale.set(scale);
-    this.model.x = width * (0.5 + offsetX);
-    this.model.y = height * (0.99 + offsetY);
+    this.model.x = width * (0.5 + offsetX) - visibleCenterX * scale;
+    this.model.y = height * (0.985 + offsetY) - visibleBottomY * scale;
   }
 
   updatePointerFocus(x, y) {

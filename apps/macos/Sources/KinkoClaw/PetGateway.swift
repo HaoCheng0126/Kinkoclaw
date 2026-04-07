@@ -102,7 +102,7 @@ enum PetSSHTargetParser {
 }
 
 private final class PetRemotePortTunnel {
-    private static let logger = Logger(subsystem: "ai.openclaw.kinkoclaw", category: "ssh-tunnel")
+    private static let logger = Logger(subsystem: "ai.kinkoclaw.app", category: "ssh-tunnel")
 
     let process: Process
     let localPort: UInt16
@@ -196,7 +196,7 @@ private final class PetRemotePortTunnel {
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            let queue = DispatchQueue(label: "ai.openclaw.kinkoclaw.port", qos: .utility)
+            let queue = DispatchQueue(label: "ai.kinkoclaw.app.port", qos: .utility)
             do {
                 let listener = try NWListener(using: .tcp, on: .any)
                 listener.newConnectionHandler = { connection in connection.cancel() }
@@ -240,7 +240,7 @@ private final class PetRemotePortTunnel {
 final class PetGatewayController {
     static let shared = PetGatewayController()
 
-    private let logger = Logger(subsystem: "ai.openclaw.kinkoclaw", category: "gateway")
+    private let logger = Logger(subsystem: "ai.kinkoclaw.app", category: "gateway")
     private let settings = PetCompanionSettings.shared
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -266,7 +266,7 @@ final class PetGatewayController {
         guard self.settings.hasCompletedOnboarding || self.settings.lastConnectionSucceededAt != nil else {
             self.connectionStatus = .disconnected
             self.presenceState = .disconnected
-            self.statusMessage = "Connect to an existing OpenClaw gateway"
+            self.statusMessage = "Connect to an existing gateway"
             self.lastErrorMessage = nil
             return
         }

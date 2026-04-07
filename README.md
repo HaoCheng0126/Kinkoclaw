@@ -1,122 +1,96 @@
 # KinkoClaw
 
-English | [简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md)
 
-KinkoClaw is a macOS desktop pet client for an existing OpenClaw Gateway.
-It turns your deployed or locally running OpenClaw into a menu bar companion with a floating pet, an AIRI-style Live2D stage, and a lightweight chat shell.
+> KinkoClaw is the macOS desktop shell for OpenClaw Gateway.
 
-## What It Does
+KinkoClaw turns an existing OpenClaw Gateway into a native macOS experience with a menu bar companion, a floating desktop pet, and a Live2D chat stage.
 
-- Menu bar app that stays out of the Dock
-- Floating desktop pet with click-to-open stage
-- AIRI-inspired Live2D stage with character view on the left and chat on the right
-- Connect to an existing OpenClaw Gateway over:
-  - Local `ws://127.0.0.1`
-  - SSH tunnel
-  - Direct `wss://`
-- Bind the UI to the `main` session of your gateway
-- Import and switch Live2D model packs
-- Adjust scene framing, scale, and offsets
-- Keep a local persona memory card that shapes replies before sending them
+![License](https://img.shields.io/badge/License-MIT-111111?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square)
+![Swift](https://img.shields.io/badge/Swift-6-111111?style=flat-square)
+![Live2D](https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square)
+![Gateway](https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square)
 
-## Product Shape
-
-KinkoClaw is intentionally a thin client.
-It does not install, host, or manage OpenClaw for you.
-You run OpenClaw somewhere else, and KinkoClaw acts like the desktop shell you use to talk to it.
-
-## Current Experience
-
-- `macOS` only
-- Menu bar entry plus floating desktop pet
-- AIRI-style stage runtime embedded with `WKWebView`
-- Live2D rendering for both the stage and the pet shell
-- Debug text chat panel kept as a fallback tool
-
-## Main Features
-
-### Connection
-
-- Local gateway connection
-- Remote gateway connection through SSH tunnel
-- Direct remote `wss://` connection
-- Connection settings stored locally in the app
-
-### Character Stage
-
-- Large Live2D character stage
-- Subtitle bubble and chat history
-- Settings drawer inside the stage
-- Character switching and imported model packs
-- Scene framing controls for scale and offsets
+## Product Snapshot
 
 ### Desktop Pet
 
-- Floating pet overlay
-- Click to open the main stage
-- Drag to reposition
-- Position persistence between launches
+![Desktop Pet](assets/readme/desktop-pet.png)
 
-### Persona Memory Card
+### Main Stage
 
-- Local character identity
-- Speaking style
-- Relationship to the user
-- Long-term memories
-- Constraints
+![Main Stage](assets/readme/main-stage.png)
 
-The memory card is applied locally before messages are sent, so it influences replies without writing back to the gateway.
+### Model Picker
 
-## Repository Layout
+![Model Picker](assets/readme/model-picker.png)
 
-- `apps/macos/Sources/KinkoClaw`: native macOS app shell
-- `apps/macos/stage-live2d`: AIRI-style stage frontend runtime
-- `apps/macos/Tests/KinkoClawTests`: focused macOS client tests
-- `scripts/package-kinkoclaw-app.sh`: app bundle packaging helper
+## Core Capabilities
 
-## Running From Source
+- Menu bar companion that stays out of the Dock during normal use
+- Floating desktop pet that opens the main stage on click
+- Live2D stage with a character view on the left and chat on the right
+- Local, SSH tunnel, and direct `wss://` gateway connection modes
+- Character switching with built-in and imported Live2D models
+- Scene framing controls for scale and offsets
+- Local persona memory card that shapes replies before sending
+- Light and dark appearance modes inside the stage
 
-### Prerequisites
+## Product Shape
+
+KinkoClaw is intentionally a thin macOS client.
+
+- It does not host the model backend
+- It does not replace your existing OpenClaw Gateway deployment
+- It focuses on desktop interaction, character presentation, and chat UX
+
+This makes it useful when you already run OpenClaw locally or on a remote machine and want a dedicated desktop shell instead of a browser-first control surface.
+
+## Quick Start
+
+1. Make sure you already have an OpenClaw Gateway running.
+2. Launch KinkoClaw.
+3. Open the stage or settings drawer.
+4. Connect with one of the supported modes:
+   - Local `ws://127.0.0.1`
+   - SSH tunnel
+   - Direct `wss://`
+5. Pick a Live2D model and start chatting through the `main` session.
+
+## Run From Source
+
+### Requirements
 
 - macOS 15+
 - Xcode
 - Node.js
 - pnpm
 
-### Build the stage frontend
+### Daily Development
 
 ```bash
-cd apps/macos/stage-live2d
-pnpm install
-pnpm build
+./scripts/run-kinkoclaw-debug.sh
 ```
 
-### Build the macOS app
+This is the default local workflow. It rebuilds the stage runtime, rebuilds the Swift target, stops old instances, and launches the visible debug binary directly.
 
-```bash
-cd apps/macos
-swift build --product KinkoClaw
-```
+## Package the App
 
-### Run the app
-
-```bash
-cd apps/macos
-./.build/arm64-apple-macosx/arm64-apple-macosx/debug/KinkoClaw
-```
-
-## Packaging
-
-To build a standalone app bundle:
+When you want a distributable `.app` bundle:
 
 ```bash
 ./scripts/package-kinkoclaw-app.sh
 ```
 
-## Notes
+## Repository Layout
 
-- KinkoClaw depends on an existing OpenClaw Gateway, but this repository is focused on the client experience.
-- The main product work currently lives in the macOS client and the Live2D stage runtime.
+- `apps/macos/Sources/KinkoClaw` — native macOS shell
+- `apps/macos/stage-live2d` — Live2D stage frontend runtime
+- `apps/macos/Tests/KinkoClawTests` — focused client tests
+- `scripts/run-kinkoclaw-debug.sh` — visible debug-binary launcher
+- `scripts/package-kinkoclaw-app.sh` — final macOS app packaging
+- `assets/readme/` — README screenshots
 
 ## License
 

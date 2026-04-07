@@ -13,17 +13,17 @@ enum GatewayConnectionProfile: String, Codable, CaseIterable, Identifiable, Send
 
     var title: String {
         switch self {
-        case .local: "Local"
-        case .sshTunnel: "SSH Tunnel"
-        case .directWss: "Direct wss"
+        case .local: "本地"
+        case .sshTunnel: "SSH 隧道"
+        case .directWss: "直连 wss"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .local: "Connect to a local gateway running on this Mac."
-        case .sshTunnel: "Forward a remote gateway to localhost over SSH."
-        case .directWss: "Connect straight to a remote wss:// gateway."
+        case .local: "连接这台 Mac 上正在运行的本地网关。"
+        case .sshTunnel: "通过 SSH 把远端网关转发到本地。"
+        case .directWss: "直接连接远端 wss:// 网关。"
         }
     }
 
@@ -45,6 +45,22 @@ enum PetPresenceState: String, Codable, CaseIterable, Sendable {
     case thinking
     case replying
     case error
+}
+
+enum StageAppearanceMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case light
+    case dark
+
+    var id: String { self.rawValue }
+
+    var title: String {
+        switch self {
+        case .light:
+            "浅色"
+        case .dark:
+            "深色"
+        }
+    }
 }
 
 struct PersonaMemoryCard: Codable, Hashable, Sendable {
@@ -165,7 +181,7 @@ enum Live2DModelRegistry {
         Live2DModelManifest(
             id: "hiyori",
             displayName: "Hiyori",
-            previewImage: "models/hiyori_free_zh/runtime/hiyori_free_t08.2048/texture_00.png",
+            previewImage: "previews/Hiyori.png",
             model: .init(
                 modelPath: "models/hiyori_free_zh/runtime/hiyori_free_t08.model3.json",
                 textures: [
@@ -178,7 +194,7 @@ enum Live2DModelRegistry {
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [:]),
-            defaultSceneFrame: .neutral,
+            defaultSceneFrame: .init(scale: 1.14, offsetX: 0, offsetY: 0),
             dialogueProfile: .init(subtitlePrefix: "Hiyori"),
             interactionProfile: .init(
                 personaLabel: "日和",
@@ -188,7 +204,7 @@ enum Live2DModelRegistry {
         Live2DModelManifest(
             id: "chitose",
             displayName: "Chitose",
-            previewImage: "models/chitose/chitose.2048/texture_00.png",
+            previewImage: "previews/Chitose.png",
             model: .init(
                 modelPath: "models/chitose/chitose.model3.json",
                 textures: [
@@ -206,7 +222,7 @@ enum Live2DModelRegistry {
                     "replying": "Smile.exp3.json",
                     "error": "Sad.exp3.json",
                 ]),
-            defaultSceneFrame: .neutral,
+            defaultSceneFrame: .init(scale: 1.08, offsetX: 0, offsetY: 0),
             dialogueProfile: .init(subtitlePrefix: "Chitose"),
             interactionProfile: .init(
                 personaLabel: "千岁",
@@ -216,7 +232,7 @@ enum Live2DModelRegistry {
         Live2DModelManifest(
             id: "hibiki",
             displayName: "Hibiki",
-            previewImage: "models/hibiki/hibiki.2048/texture_00.png",
+            previewImage: "previews/Hibiki.png",
             model: .init(
                 modelPath: "models/hibiki/hibiki.model3.json",
                 textures: [
@@ -234,7 +250,7 @@ enum Live2DModelRegistry {
                     "replying": "Blushing",
                     "error": "Sad",
                 ]),
-            defaultSceneFrame: .neutral,
+            defaultSceneFrame: .init(scale: 1.0, offsetX: 0, offsetY: 0.03),
             dialogueProfile: .init(subtitlePrefix: "Hibiki"),
             interactionProfile: .init(
                 personaLabel: "响",
@@ -244,7 +260,7 @@ enum Live2DModelRegistry {
         Live2DModelManifest(
             id: "tororo",
             displayName: "Tororo",
-            previewImage: "models/tororo/tororo.2048/texture_00.png",
+            previewImage: "previews/Tororo.png",
             model: .init(
                 modelPath: "models/tororo/tororo.model3.json",
                 textures: [
@@ -257,7 +273,7 @@ enum Live2DModelRegistry {
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [:]),
-            defaultSceneFrame: .neutral,
+            defaultSceneFrame: .init(scale: 1.08, offsetX: 0, offsetY: 0),
             dialogueProfile: .init(subtitlePrefix: "Tororo"),
             interactionProfile: .init(
                 personaLabel: "托萝萝",
@@ -267,7 +283,7 @@ enum Live2DModelRegistry {
         Live2DModelManifest(
             id: "hijiki",
             displayName: "Hijiki",
-            previewImage: "models/hijiki/hijiki.2048/texture_00.png",
+            previewImage: "previews/Hijiki.png",
             model: .init(
                 modelPath: "models/hijiki/hijiki.model3.json",
                 textures: [
@@ -280,7 +296,7 @@ enum Live2DModelRegistry {
                     "error": ["FlickDown:0"],
                 ],
                 expressions: [:]),
-            defaultSceneFrame: .neutral,
+            defaultSceneFrame: .init(scale: 1.08, offsetX: 0, offsetY: 0),
             dialogueProfile: .init(subtitlePrefix: "Hijiki"),
             interactionProfile: .init(
                 personaLabel: "羊栖菜",
@@ -322,10 +338,10 @@ enum Live2DModelRegistry {
 }
 
 enum StageThemeRegistry {
-    static let airiClassic = StageThemeManifest(
-        id: "airi-classic",
-        displayName: "AIRI Classic",
-        subtitle: "经典粉光",
+    static let defaultTheme = StageThemeManifest(
+        id: "kinkoclaw-default",
+        displayName: "KinkoClaw Default",
+        subtitle: "默认柔光",
         accentHex: "#FF6B9B",
         assets: .init(
             hairHex: "#F6B0CF",
@@ -343,69 +359,18 @@ enum StageThemeRegistry {
             thinkingHaloSpeed: 0.85,
             mouthSmoothing: 0.78))
 
-    static let airiTwilight = StageThemeManifest(
-        id: "airi-twilight",
-        displayName: "AIRI Twilight",
-        subtitle: "暮色紫调",
-        accentHex: "#7D7BFF",
-        assets: .init(
-            hairHex: "#C7C6FF",
-            hairShadowHex: "#6D64D7",
-            skinHex: "#FDF3FF",
-            eyeHex: "#3F3365",
-            ribbonHex: "#7D7BFF",
-            outfitHex: "#2B234D",
-            glowHex: "#D9D7FF"),
-        animationProfile: .init(
-            floatAmplitude: 4,
-            floatSpeed: 0.92,
-            blinkEvery: 5.2,
-            focusSwaySpeed: 0.72,
-            thinkingHaloSpeed: 0.68,
-            mouthSmoothing: 0.72))
-
-    static let airiSunrise = StageThemeManifest(
-        id: "airi-sunrise",
-        displayName: "AIRI Sunrise",
-        subtitle: "晨曦暖光",
-        accentHex: "#FF8B5E",
-        assets: .init(
-            hairHex: "#FFD39B",
-            hairShadowHex: "#FF8B5E",
-            skinHex: "#FFF1E8",
-            eyeHex: "#6A2A20",
-            ribbonHex: "#FF8B5E",
-            outfitHex: "#7A3044",
-            glowHex: "#FFE5BC"),
-        animationProfile: .init(
-            floatAmplitude: 6,
-            floatSpeed: 1.18,
-            blinkEvery: 4.1,
-            focusSwaySpeed: 1.06,
-            thinkingHaloSpeed: 0.92,
-            mouthSmoothing: 0.8))
-
-    static let allThemes = [airiClassic, airiTwilight, airiSunrise]
-
     static func theme(for id: String?) -> StageThemeManifest {
-        self.allThemes.first(where: { $0.id == id }) ?? self.defaultTheme
+        _ = id
+        return self.defaultTheme
     }
 
     static func legacyThemeID(from legacyPackID: String?) -> String? {
         switch legacyPackID {
-        case self.airiClassic.id:
-            self.airiClassic.id
-        case self.airiTwilight.id:
-            self.airiTwilight.id
-        case self.airiSunrise.id:
-            self.airiSunrise.id
+        case self.defaultTheme.id, "airi-classic", "airi-twilight", "airi-sunrise":
+            self.defaultTheme.id
         default:
             nil
         }
-    }
-
-    static var defaultTheme: StageThemeManifest {
-        self.airiClassic
     }
 }
 
@@ -516,6 +481,7 @@ final class PetCompanionSettings {
         static let gatewayAuthTokenRef = "kinkoclaw.gatewayAuthTokenRef"
         static let selectedPackId = "kinkoclaw.selectedPackId"
         static let selectedThemeId = "kinkoclaw.selectedThemeId"
+        static let appearanceMode = "kinkoclaw.appearanceMode"
         static let sceneModelScale = "kinkoclaw.sceneModelScale"
         static let sceneModelOffsetX = "kinkoclaw.sceneModelOffsetX"
         static let sceneModelOffsetY = "kinkoclaw.sceneModelOffsetY"
@@ -529,7 +495,16 @@ final class PetCompanionSettings {
     }
 
     private enum Keychain {
-        static let service = "ai.openclaw.kinkoclaw"
+        static let service = "ai.kinkoclaw.app"
+        static let legacyServices = [
+            "ai.openclaw.kinkoclaw",
+        ]
+    }
+
+    private enum LegacyDefaultsDomain {
+        static let bundleIdentifiers = [
+            "ai.openclaw.kinkoclaw",
+        ]
     }
 
     @ObservationIgnored
@@ -603,6 +578,17 @@ final class PetCompanionSettings {
                 return
             }
             self.persistString(theme.id, key: Keys.selectedThemeId)
+        }
+    }
+
+    var appearanceMode: StageAppearanceMode {
+        didSet {
+            let next = StageAppearanceMode(rawValue: self.appearanceMode.rawValue) ?? .light
+            if next != self.appearanceMode {
+                self.appearanceMode = next
+                return
+            }
+            self.persistString(next.rawValue, key: Keys.appearanceMode)
         }
     }
 
@@ -695,11 +681,13 @@ final class PetCompanionSettings {
     var launchAtLoginErrorMessage: String?
 
     private init() {
+        Self.migrateLegacyDefaultsIfNeeded(defaults: UserDefaults.standard)
         let storedMode = GatewayConnectionProfile.fromStoredValue(self.defaults.string(forKey: Keys.connectionMode))
         let storedPack = self.defaults.string(forKey: Keys.selectedPackId) ?? Live2DModelRegistry.defaultModel.id
         let legacyThemeID = StageThemeRegistry.legacyThemeID(from: storedPack)
         let storedThemeID = self.defaults.string(forKey: Keys.selectedThemeId) ?? legacyThemeID ?? StageThemeRegistry.defaultTheme.id
         let tokenRef = self.defaults.string(forKey: Keys.gatewayAuthTokenRef) ?? "default"
+        let storedAppearanceMode = StageAppearanceMode(rawValue: self.defaults.string(forKey: Keys.appearanceMode) ?? "")
         let storedGatewayMode = GatewayConnectionProfile.fromStoredValue(self.defaults.string(forKey: Keys.lastGatewayMode))
         let resolvedMode = storedMode ?? .local
         let resolvedModelID = legacyThemeID == nil ? storedPack : Live2DModelRegistry.defaultModel.id
@@ -710,9 +698,10 @@ final class PetCompanionSettings {
         self.sshIdentityPath = self.defaults.string(forKey: Keys.sshIdentityPath) ?? ""
         self.directGatewayURL = self.defaults.string(forKey: Keys.directGatewayURL) ?? ""
         self.gatewayAuthTokenRef = tokenRef
-        self.gatewayAuthToken = KinkoKeychainStore.loadString(service: Keychain.service, account: tokenRef) ?? ""
+        self.gatewayAuthToken = Self.loadTokenFromKnownServices(ref: tokenRef)
         self.selectedPackId = Live2DModelRegistry.model(for: resolvedModelID).id
         self.selectedThemeId = StageThemeRegistry.theme(for: storedThemeID).id
+        self.appearanceMode = storedAppearanceMode ?? .light
         let storedScale = self.defaults.object(forKey: Keys.sceneModelScale) != nil
             ? self.defaults.double(forKey: Keys.sceneModelScale)
             : 1
@@ -836,15 +825,53 @@ final class PetCompanionSettings {
     }
 
     private func loadToken(ref: String) -> String {
-        KinkoKeychainStore.loadString(service: Keychain.service, account: ref) ?? ""
+        Self.loadTokenFromKnownServices(ref: ref)
     }
 
     private func saveToken(_ token: String, ref: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             _ = KinkoKeychainStore.delete(service: Keychain.service, account: ref)
+            Self.deleteLegacyTokens(ref: ref)
         } else {
             _ = KinkoKeychainStore.saveString(trimmed, service: Keychain.service, account: ref)
+            Self.deleteLegacyTokens(ref: ref)
+        }
+    }
+
+    private static func migrateLegacyDefaultsIfNeeded(defaults: UserDefaults) {
+        for domain in LegacyDefaultsDomain.bundleIdentifiers {
+            guard let values = defaults.persistentDomain(forName: domain) else { continue }
+            for (key, value) in values where defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
+    }
+
+    private static func loadTokenFromKnownServices(ref: String) -> String {
+        if let token = KinkoKeychainStore.loadString(service: Keychain.service, account: ref),
+           !token.isEmpty
+        {
+            return token
+        }
+
+        for legacyService in Keychain.legacyServices {
+            guard let token = KinkoKeychainStore.loadString(service: legacyService, account: ref),
+                  !token.isEmpty
+            else {
+                continue
+            }
+
+            _ = KinkoKeychainStore.saveString(token, service: Keychain.service, account: ref)
+            return token
+        }
+
+        return ""
+    }
+
+    private static func deleteLegacyTokens(ref: String) {
+        for legacyService in Keychain.legacyServices {
+            _ = KinkoKeychainStore.delete(service: legacyService, account: ref)
         }
     }
 

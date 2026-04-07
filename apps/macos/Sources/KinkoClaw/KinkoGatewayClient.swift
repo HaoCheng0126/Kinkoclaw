@@ -256,7 +256,7 @@ struct GatewayResponseError: LocalizedError, @unchecked Sendable {
 }
 
 actor GatewayTransport {
-    private let logger = Logger(subsystem: "ai.openclaw.kinkoclaw", category: "gateway-transport")
+    private let logger = Logger(subsystem: "ai.kinkoclaw.app", category: "gateway-transport")
     private let url: URL
     private let token: String?
     private let decoder = JSONDecoder()

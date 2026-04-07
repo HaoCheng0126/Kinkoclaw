@@ -1,8 +1,38 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --accent: #ff6b9b;
   --accent-glow: #ffd4e3;
   --accent-soft: rgba(255, 107, 155, 0.18);
+  --panel-tint: rgba(255, 107, 155, 0.09);
+  --bubble-soft: rgba(255, 107, 155, 0.12);
+  --bubble-user: rgba(255, 255, 255, 0.82);
+  --grid-line: rgba(98, 46, 78, 0.06);
+  --bg-main: #f7eef5;
+  --bg-card: rgba(255, 248, 251, 0.82);
+  --bg-card-strong: rgba(255, 250, 252, 0.94);
+  --line-soft: rgba(92, 41, 72, 0.12);
+  --line-strong: rgba(92, 41, 72, 0.18);
+  --text-main: #341929;
+  --text-muted: rgba(70, 35, 57, 0.66);
+  --shadow-strong: 0 28px 60px rgba(103, 53, 84, 0.14);
+  --surface-soft: rgba(255, 255, 255, 0.72);
+  --surface-muted: rgba(255, 255, 255, 0.6);
+  --surface-strong: rgba(255, 255, 255, 0.9);
+  --input-bg: rgba(255, 255, 255, 0.92);
+  --input-focus-ring: rgba(255, 107, 155, 0.14);
+  --button-secondary-bg: rgba(85, 42, 69, 0.08);
+  --scroll-thumb: rgba(98, 46, 78, 0.2);
+  --toast-bg: rgba(255, 250, 252, 0.94);
+  --subtitle-bg: rgba(255, 251, 253, 0.86);
+  --scene-depth-start: #f7edf4;
+  --scene-depth-mid: #f0dde8;
+  --scene-depth-end: #ead5e1;
+  --scene-glow-1: rgba(255, 107, 155, 0.32);
+  --scene-glow-2: rgba(255, 212, 227, 0.3);
+}
+
+.stage-shell.appearance-dark {
+  color-scheme: dark;
   --panel-tint: rgba(255, 107, 155, 0.08);
   --bubble-soft: rgba(255, 107, 155, 0.14);
   --bubble-user: rgba(255, 255, 255, 0.09);
@@ -15,6 +45,20 @@
   --text-main: #fff6fb;
   --text-muted: rgba(255, 244, 249, 0.7);
   --shadow-strong: 0 34px 80px rgba(0, 0, 0, 0.38);
+  --surface-soft: rgba(255, 255, 255, 0.06);
+  --surface-muted: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(10, 5, 11, 0.46);
+  --input-focus-ring: rgba(255, 255, 255, 0.04);
+  --button-secondary-bg: rgba(255, 255, 255, 0.08);
+  --scroll-thumb: rgba(255, 255, 255, 0.14);
+  --toast-bg: rgba(18, 8, 20, 0.9);
+  --subtitle-bg: rgba(17, 7, 15, 0.78);
+  --scene-depth-start: color-mix(in srgb, var(--accent) 12%, #140913);
+  --scene-depth-mid: color-mix(in srgb, var(--accent) 8%, #1b0d1b);
+  --scene-depth-end: #10070f;
+  --scene-glow-1: color-mix(in srgb, var(--accent) 44%, transparent);
+  --scene-glow-2: color-mix(in srgb, var(--accent-glow) 24%, transparent);
 }
 
 * {
@@ -38,6 +82,13 @@ body {
 }
 
 body[data-mode="stage"] {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(255, 255, 255, 0.78), transparent 20%),
+    radial-gradient(circle at 78% 8%, rgba(255, 214, 232, 0.42), transparent 16%),
+    linear-gradient(160deg, #f8f1f6 0%, #f4e8f0 52%, #efe1ea 100%);
+}
+
+html[data-appearance="dark"] body[data-mode="stage"] {
   background:
     radial-gradient(circle at 14% 16%, rgba(255, 255, 255, 0.08), transparent 20%),
     radial-gradient(circle at 78% 8%, rgba(255, 255, 255, 0.07), transparent 16%),
@@ -63,9 +114,9 @@ input {
 
 .stage-shell:not(.is-pet) {
   display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(350px, 1.04fr);
-  gap: clamp(16px, 1.8vw, 22px);
-  padding: clamp(16px, 1.8vw, 22px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: clamp(10px, 1.3vw, 14px);
+  padding: clamp(10px, 1.3vw, 14px);
 }
 
 .stage-shell.is-pet {
@@ -80,23 +131,23 @@ input {
   overflow: hidden;
   border: 1px solid var(--line-soft);
   background:
-    linear-gradient(160deg, color-mix(in srgb, var(--panel-tint) 82%, rgba(255, 255, 255, 0.05)), transparent 36%),
+    linear-gradient(160deg, color-mix(in srgb, var(--panel-tint) 82%, var(--surface-muted)), transparent 36%),
     var(--bg-card);
   box-shadow: var(--shadow-strong);
   backdrop-filter: blur(24px);
 }
 
 .scene-column {
-  padding: 20px;
+  padding: 14px;
 }
 
 .scene-backdrop {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 24% 24%, color-mix(in srgb, var(--accent) 44%, transparent), transparent 30%),
-    radial-gradient(circle at 72% 18%, color-mix(in srgb, var(--accent-glow) 24%, transparent), transparent 24%),
-    linear-gradient(160deg, color-mix(in srgb, var(--accent) 12%, #140913) 0%, color-mix(in srgb, var(--accent) 8%, #1b0d1b) 46%, #10070f 100%);
+    radial-gradient(circle at 24% 24%, var(--scene-glow-1), transparent 30%),
+    radial-gradient(circle at 72% 18%, var(--scene-glow-2), transparent 24%),
+    linear-gradient(160deg, var(--scene-depth-start) 0%, var(--scene-depth-mid) 46%, var(--scene-depth-end) 100%);
 }
 
 .backdrop-halo,
@@ -152,7 +203,7 @@ input {
 .mode-pill {
   border-radius: 999px;
   border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-soft);
   color: var(--text-main);
 }
 
@@ -185,12 +236,12 @@ input {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: clamp(10px, 1.6vw, 18px) clamp(12px, 1.6vw, 22px) 14px;
+  padding: 8px 8px 10px;
 }
 
 .scene-aura {
   inset: 12% 10% auto;
-  width: min(70%, 520px);
+  width: min(70%, 400px);
   aspect-ratio: 1;
   margin: auto;
   background:
@@ -203,9 +254,9 @@ input {
 
 .scene-frame {
   position: relative;
-  width: min(76%, 560px);
+  width: min(94%, 340px);
   height: 100%;
-  min-height: 460px;
+  min-height: 330px;
 }
 
 .live2d-host,
@@ -233,7 +284,7 @@ input {
   place-items: center;
   border-radius: 24px;
   border: 1px dashed rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-soft);
   color: var(--text-muted);
   text-align: center;
   padding: 18px;
@@ -247,7 +298,7 @@ input {
 
 .model-fallback.pet {
   inset: 12% 12% 14%;
-  background: rgba(17, 7, 14, 0.48);
+  background: color-mix(in srgb, var(--bg-card-strong) 84%, transparent);
 }
 
 .subtitle-bubble {
@@ -258,7 +309,7 @@ input {
   padding: 16px 18px;
   border-radius: 24px;
   border: 1px solid var(--line-strong);
-  background: rgba(17, 7, 15, 0.78);
+  background: var(--subtitle-bg);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(20px);
 }
@@ -284,7 +335,7 @@ input {
 .chat-column {
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: 16px;
 }
 
 .chat-header {
@@ -292,7 +343,7 @@ input {
   justify-content: space-between;
   gap: 18px;
   align-items: flex-start;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .chat-header h1,
@@ -325,7 +376,7 @@ input {
   place-items: center;
   border-radius: 16px;
   border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-soft);
   color: var(--text-main);
   cursor: pointer;
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
@@ -333,8 +384,8 @@ input {
 
 .icon-button:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.24);
+  background: var(--surface-strong);
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line-strong));
 }
 
 .gear-icon,
@@ -359,19 +410,19 @@ input {
 
 .message-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--scroll-thumb);
 }
 
 .message-card {
   padding: 14px 16px;
   border-radius: 22px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-soft);
 }
 
 .message-card.assistant {
   border-color: color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.12));
-  background: linear-gradient(180deg, var(--bubble-soft), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(180deg, var(--bubble-soft), var(--surface-muted));
 }
 
 .message-card.user {
@@ -405,7 +456,7 @@ input {
 .field textarea {
   width: 100%;
   border: 1px solid var(--line-soft);
-  background: rgba(10, 5, 11, 0.46);
+  background: var(--input-bg);
   color: var(--text-main);
   outline: none;
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
@@ -426,7 +477,7 @@ input {
 .field input:focus,
 .field textarea:focus {
   border-color: color-mix(in srgb, var(--accent) 34%, white);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 4px var(--input-focus-ring);
 }
 
 .drawer-actions {
@@ -464,7 +515,7 @@ input {
   padding: 12px 16px;
   border-radius: 999px;
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--button-secondary-bg);
 }
 
 .settings-drawer {
@@ -477,8 +528,8 @@ input {
   border-radius: 28px;
   border: 1px solid var(--line-strong);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 18%),
-    rgba(18, 8, 18, 0.96);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 64%, transparent), transparent 18%),
+    var(--bg-card-strong);
   box-shadow: 0 26px 60px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(26px);
 }
@@ -515,14 +566,14 @@ input {
 
 .drawer-sections::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--scroll-thumb);
 }
 
 .drawer-section {
   padding: 18px;
   border-radius: 22px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-soft);
 }
 
 .drawer-section h3 {
@@ -535,7 +586,7 @@ input {
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-soft);
   color: var(--text-muted);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -610,66 +661,10 @@ input {
   gap: 10px;
   margin-top: 14px;
 }
-
-.theme-grid {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.theme-card {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.04);
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.theme-card:hover {
-  transform: translateY(-1px);
-}
-
-.theme-card.active,
 .model-card.active {
   border-color: color-mix(in srgb, var(--accent) 84%, white 12%);
   background: color-mix(in srgb, var(--panel-tint) 72%, rgba(255, 255, 255, 0.04));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.theme-card__swatch {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.38), transparent 28%),
-    linear-gradient(160deg, color-mix(in srgb, var(--accent-glow) 60%, white 20%), transparent),
-    var(--theme-accent, var(--accent));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-.theme-card__content {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.theme-card__title {
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.theme-card__meta {
-  font-size: 12px;
-  color: var(--text-muted);
 }
 
 .model-card {
@@ -680,7 +675,7 @@ input {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--line-soft);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-soft);
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -705,8 +700,8 @@ input {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.04);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 84%, transparent), transparent),
+    var(--surface-muted);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 10px 24px rgba(0, 0, 0, 0.18);
@@ -743,7 +738,7 @@ input {
   padding: 12px 16px;
   border-radius: 999px;
   border: 1px solid var(--line-strong);
-  background: rgba(18, 8, 20, 0.9);
+  background: var(--toast-bg);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
 }
 
@@ -802,16 +797,16 @@ input {
 
 @media (max-width: 980px) {
   .stage-shell:not(.is-pet) {
-    grid-template-columns: minmax(0, 0.94fr) minmax(300px, 1.06fr);
-    gap: 14px;
-    padding: 14px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 10px;
+    padding: 10px;
   }
 
   .scene-frame {
-    min-height: 440px;
+    min-height: 300px;
   }
 
   .chat-column {
-    min-height: 420px;
+    min-height: 360px;
   }
 }

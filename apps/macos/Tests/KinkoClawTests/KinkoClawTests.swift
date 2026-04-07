@@ -35,17 +35,17 @@ struct KinkoClawTests {
         #expect(ids.contains("airi-classic") == false)
 
         let hiyori = PetPackRegistry.pack(for: "hiyori")
-        #expect(hiyori.previewImage == "models/hiyori_free_zh/runtime/hiyori_free_t08.2048/texture_00.png")
+        #expect(hiyori.previewImage == "previews/Hiyori.png")
         #expect(hiyori.model.motions["thinking"]?.contains("Flick:0") == true)
         #expect(hiyori.model.expressions.isEmpty)
 
         let chitose = PetPackRegistry.pack(for: "chitose")
-        #expect(chitose.previewImage == "models/chitose/chitose.2048/texture_00.png")
+        #expect(chitose.previewImage == "previews/Chitose.png")
         #expect(chitose.model.motions["thinking"]?.contains("Flick:0") == true)
         #expect(chitose.model.expressions["replying"] == "Smile.exp3.json")
 
         let hijiki = PetPackRegistry.pack(for: "hijiki")
-        #expect(hijiki.previewImage == "models/hijiki/hijiki.2048/texture_00.png")
+        #expect(hijiki.previewImage == "previews/Hijiki.png")
         #expect(hijiki.model.motions["error"]?.contains("FlickDown:0") == true)
         #expect(hijiki.model.expressions.isEmpty)
 
@@ -54,11 +54,11 @@ struct KinkoClawTests {
     }
 
     @Test
-    func stageThemeRegistryExposesThreeThemes() {
-        let themes = StageThemeRegistry.allThemes
-        #expect(themes.map(\.id) == ["airi-classic", "airi-twilight", "airi-sunrise"])
-        #expect(StageThemeRegistry.theme(for: "airi-twilight").displayName == "AIRI Twilight")
-        #expect(StageThemeRegistry.legacyThemeID(from: "airi-sunrise") == "airi-sunrise")
+    func stageThemeRegistryFallsBackToSingleDefaultTheme() {
+        #expect(StageThemeRegistry.defaultTheme.id == "kinkoclaw-default")
+        #expect(StageThemeRegistry.theme(for: nil).id == StageThemeRegistry.defaultTheme.id)
+        #expect(StageThemeRegistry.theme(for: "airi-twilight").id == StageThemeRegistry.defaultTheme.id)
+        #expect(StageThemeRegistry.legacyThemeID(from: "airi-sunrise") == StageThemeRegistry.defaultTheme.id)
     }
 
     @Test
@@ -81,7 +81,7 @@ struct KinkoClawTests {
         let outbound = KinkoPersonaSupport.composeOutboundMessage(
             visibleMessage: "Hello there",
             card: .init(
-                characterIdentity: "AIRI is a composed anime companion.",
+                characterIdentity: "KinkoClaw is a composed desktop companion.",
                 speakingStyle: "Warm, concise, observant.",
                 relationshipToUser: "A trusted desktop companion.",
                 longTermMemories: ["The user prefers direct answers."],
@@ -114,5 +114,12 @@ struct KinkoClawTests {
     @Test
     func textChatPresenceStatesExist() {
         #expect(PetPresenceState.allCases == [.disconnected, .idle, .thinking, .replying, .error])
+    }
+
+    @Test
+    func stageAppearanceModesStayStable() {
+        #expect(StageAppearanceMode.allCases == [.light, .dark])
+        #expect(StageAppearanceMode.light.title == "浅色")
+        #expect(StageAppearanceMode.dark.title == "深色")
     }
 }

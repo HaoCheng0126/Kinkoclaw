@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>KinkoClaw</string>
     <key>CFBundleIdentifier</key>
-    <string>ai.openclaw.kinkoclaw</string>
+    <string>ai.kinkoclaw.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -25,9 +25,9 @@
     <key>LSUIElement</key>
     <true/>
 
-    <key>OpenClawBuildTimestamp</key>
+    <key>KinkoClawBuildTimestamp</key>
     <string></string>
-    <key>OpenClawGitCommit</key>
+    <key>KinkoClawGitCommit</key>
     <string></string>
 
     <key>NSAppTransportSecurity</key>

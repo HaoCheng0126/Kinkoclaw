@@ -1,77 +1,62 @@
 # KinkoClaw
 
-[English](README.md) | 简体中文
+[English](README.md)
 
-KinkoClaw 是一个连接现有 OpenClaw Gateway 的 macOS 桌面宠物客户端。
-它把你已经部署在本地或服务器上的 OpenClaw，变成一个菜单栏助手、桌面悬浮宠物和 AIRI 风格的 Live2D 对话舞台。
+> KinkoClaw 是 OpenClaw Gateway 的 macOS 桌面外壳。
 
-## 它能做什么
+KinkoClaw 把一个已经存在的 OpenClaw Gateway，变成更适合日常使用的 macOS 形态：顶部菜单栏入口、桌面悬浮宠物，以及带 Live2D 角色的主舞台聊天界面。
 
-- 菜单栏常驻，不进入 Dock
-- 桌面悬浮宠物，点击打开主舞台
-- AIRI 风格主舞台，左侧角色、右侧对话
-- 连接已有 OpenClaw Gateway，支持：
-  - 本地 `ws://127.0.0.1`
-  - SSH 隧道
-  - 直连 `wss://`
-- 固定绑定 Gateway 的 `main` 会话
-- 导入和切换 Live2D 模型包
-- 调整角色缩放、水平偏移、垂直偏移
-- 本地保存“人设记忆卡”，在发送前影响回复风格
+![License](https://img.shields.io/badge/License-MIT-111111?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square)
+![Swift](https://img.shields.io/badge/Swift-6-111111?style=flat-square)
+![Live2D](https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square)
+![Gateway](https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square)
 
-## 产品定位
-
-KinkoClaw 是一个薄客户端，不负责安装、托管或管理 OpenClaw。
-OpenClaw 在别处运行，KinkoClaw 负责提供桌面端的交互外壳。
-
-## 当前体验
-
-- 仅支持 `macOS`
-- 菜单栏入口 + 桌面宠物
-- 使用 `WKWebView` 承载 AIRI 风格 Live2D 舞台
-- 主舞台和桌宠都走 Live2D 渲染链
-- 保留一个轻量文本聊天面板作为调试/兜底入口
-
-## 主要功能
-
-### 连接能力
-
-- 连接本地 Gateway
-- 通过 SSH 隧道连接远端 Gateway
-- 直接连接远端 `wss://` Gateway
-- 连接配置保存在本地客户端
-
-### 角色舞台
-
-- 大尺寸 Live2D 角色舞台
-- 字幕气泡和聊天历史
-- 舞台内设置抽屉
-- 角色切换和导入模型
-- 舞台构图调节
+## 产品预览
 
 ### 桌面宠物
 
-- 桌面悬浮显示
-- 单击打开主舞台
-- 支持拖动
-- 重启后恢复位置
+![Desktop Pet](assets/readme/desktop-pet.png)
 
-### 人设记忆卡
+### 主舞台
 
-- 角色身份
-- 说话风格
-- 与用户关系
-- 长期记忆
-- 约束条件
+![Main Stage](assets/readme/main-stage.png)
 
-这张记忆卡只在本地客户端生效，会在发送消息前注入隐藏上下文，不会回写到 Gateway。
+### 模型选择
 
-## 仓库结构
+![Model Picker](assets/readme/model-picker.png)
 
-- `apps/macos/Sources/KinkoClaw`：原生 macOS 客户端外壳
-- `apps/macos/stage-live2d`：AIRI 风格舞台前端运行时
-- `apps/macos/Tests/KinkoClawTests`：macOS 客户端测试
-- `scripts/package-kinkoclaw-app.sh`：`.app` 打包脚本
+## 核心能力
+
+- 菜单栏常驻，不打扰 Dock 的正常使用
+- 桌面悬浮宠物，点击即可打开主舞台
+- 左侧角色、右侧对话的 Live2D 主舞台
+- 支持本地、SSH 隧道、直连 `wss://` 三种网关连接方式
+- 支持内置和导入 Live2D 模型切换
+- 支持缩放、水平偏移、垂直偏移等角色构图调节
+- 本地人设记忆卡会在发送前影响回复风格
+- 主舞台支持浅色和深色两种外观模式
+
+## 产品定位
+
+KinkoClaw 是一个明确收敛在 macOS 上的薄客户端。
+
+- 不负责托管模型后端
+- 不替代你已有的 OpenClaw Gateway 部署
+- 只负责桌面交互、角色展示和聊天体验
+
+如果你已经在本地或远端运行 OpenClaw Gateway，而你想要一个更像“桌面应用”的入口，KinkoClaw 就是这个外壳。
+
+## Quick Start
+
+1. 先确保你已经有一个可用的 OpenClaw Gateway。
+2. 启动 KinkoClaw。
+3. 打开主舞台或设置抽屉。
+4. 选择一种连接方式：
+   - 本地 `ws://127.0.0.1`
+   - SSH 隧道
+   - 直连 `wss://`
+5. 选择角色模型，然后通过 `main` 会话开始聊天。
 
 ## 从源码运行
 
@@ -82,40 +67,30 @@ OpenClaw 在别处运行，KinkoClaw 负责提供桌面端的交互外壳。
 - Node.js
 - pnpm
 
-### 构建舞台前端
+### 日常开发启动
 
 ```bash
-cd apps/macos/stage-live2d
-pnpm install
-pnpm build
+./scripts/run-kinkoclaw-debug.sh
 ```
 
-### 构建 macOS 客户端
-
-```bash
-cd apps/macos
-swift build --product KinkoClaw
-```
-
-### 启动应用
-
-```bash
-cd apps/macos
-./.build/arm64-apple-macosx/arm64-apple-macosx/debug/KinkoClaw
-```
+这是当前唯一的本地开发启动方式。它会重建舞台前端、重建 Swift target、关闭旧实例，并直接拉起可见的调试二进制。
 
 ## 打包
 
-生成独立 `.app`：
+需要生成最终可分发的 `.app` 时：
 
 ```bash
 ./scripts/package-kinkoclaw-app.sh
 ```
 
-## 说明
+## 仓库结构
 
-- KinkoClaw 依赖一个已经存在的 OpenClaw Gateway，但这个仓库当前专注的是客户端体验。
-- 现阶段的核心工作都集中在 macOS 客户端和 Live2D 舞台运行时。
+- `apps/macos/Sources/KinkoClaw` — 原生 macOS 外壳
+- `apps/macos/stage-live2d` — Live2D 舞台前端运行时
+- `apps/macos/Tests/KinkoClawTests` — 客户端测试
+- `scripts/run-kinkoclaw-debug.sh` — 可见调试二进制启动脚本
+- `scripts/package-kinkoclaw-app.sh` — 最终 macOS 应用打包脚本
+- `assets/readme/` — README 截图资源
 
 ## License
 

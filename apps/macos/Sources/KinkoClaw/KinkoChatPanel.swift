@@ -442,7 +442,7 @@ private struct MessageBubbleRow: View {
         VStack(alignment: self.message.role == "user" ? .trailing : .leading, spacing: 6) {
             HStack {
                 if self.message.role == "user" { Spacer() }
-                Text(self.message.role == "user" ? "You" : "AIRI")
+                Text(self.message.role == "user" ? "你" : "角色")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 if self.message.role != "user" { Spacer() }

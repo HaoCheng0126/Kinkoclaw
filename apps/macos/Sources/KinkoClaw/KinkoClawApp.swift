@@ -29,13 +29,19 @@ final class KinkoClawAppDelegate: NSObject, NSApplicationDelegate {
     private let gateway = PetGatewayController.shared
 
     func applicationDidFinishLaunching(_: Notification) {
+        self.configureApplicationIdentity()
         if self.isDuplicateInstance() {
             NSApp.terminate(nil)
             return
         }
 
+        let forceVisibleDebug = ProcessInfo.processInfo.environment["KINKOCLAW_FORCE_VISIBLE"] == "1"
+
         NSApp.setActivationPolicy(.accessory)
         PetOverlayController.shared.show()
+        if forceVisibleDebug {
+            self.presentVisibleDebugStartup()
+        }
         self.gateway.start()
     }
 
@@ -58,6 +64,27 @@ final class KinkoClawAppDelegate: NSObject, NSApplicationDelegate {
         guard let bundleID = Bundle.main.bundleIdentifier else { return false }
         let running = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == bundleID }
         return running.count > 1
+    }
+
+    private func configureApplicationIdentity() {
+        ProcessInfo.processInfo.processName = "KinkoClaw"
+
+        let iconURL =
+            Bundle.module.url(forResource: "Hiyori", withExtension: "png", subdirectory: "StageRuntime/previews") ??
+            Bundle.module.url(forResource: "KinkoClaw", withExtension: "icns")
+
+        guard let iconURL, let icon = NSImage(contentsOf: iconURL) else { return }
+        icon.size = NSSize(width: 512, height: 512)
+        NSApp.applicationIconImage = icon
+    }
+
+    private func presentVisibleDebugStartup() {
+        CharacterStageWindowController.shared.show(anchorFrame: nil)
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            CharacterStageWindowController.shared.show(anchorFrame: nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -251,13 +278,12 @@ final class PetOverlayController {
         self.menuTarget.onQuit = { NSApp.terminate(nil) }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open Stage", action: #selector(PetContextMenuTarget.openChat), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Debug Text Chat", action: #selector(PetContextMenuTarget.openDebugChat), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(PetContextMenuTarget.openSettings), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Reconnect", action: #selector(PetContextMenuTarget.reconnect), keyEquivalent: "r"))
+        menu.addItem(NSMenuItem(title: "打开主舞台", action: #selector(PetContextMenuTarget.openChat), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "设置…", action: #selector(PetContextMenuTarget.openSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "重新连接", action: #selector(PetContextMenuTarget.reconnect), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
 
-        let packsMenu = NSMenu(title: "Live2D Model")
+        let packsMenu = NSMenu(title: "角色模型")
         for pack in self.settings.availablePacks {
             let item = NSMenuItem(title: pack.displayName, action: #selector(PetContextMenuTarget.selectPack(_:)), keyEquivalent: "")
             item.target = self.menuTarget
@@ -265,13 +291,13 @@ final class PetOverlayController {
             item.state = self.settings.selectedPackId == pack.id ? .on : .off
             packsMenu.addItem(item)
         }
-        let packsItem = NSMenuItem(title: "Live2D Model", action: nil, keyEquivalent: "")
+        let packsItem = NSMenuItem(title: "角色模型", action: nil, keyEquivalent: "")
         menu.addItem(packsItem)
         menu.setSubmenu(packsMenu, for: packsItem)
 
-        menu.addItem(NSMenuItem(title: "Reset Position", action: #selector(PetContextMenuTarget.resetPosition), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "重置桌宠位置", action: #selector(PetContextMenuTarget.resetPosition), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit KinkoClaw", action: #selector(PetContextMenuTarget.quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "退出应用", action: #selector(PetContextMenuTarget.quit), keyEquivalent: "q"))
 
         for item in menu.items {
             item.target = item.target ?? self.menuTarget
@@ -281,10 +307,6 @@ final class PetOverlayController {
             CharacterStageWindowController.shared.refreshAppearance()
             PetChatPanelController.shared.refreshAppearance()
         }
-        self.menuTarget.onOpenDebugChat = {
-            PetChatPanelController.shared.toggle(anchorFrame: PetOverlayController.shared.currentFrame())
-        }
-
         NSMenu.popUpContextMenu(menu, with: event, for: view)
     }
 
@@ -471,7 +493,7 @@ final class PetSettingsWindowController {
             gateway: self.gateway,
             onboarding: onboarding,
             onClose: { [weak self] in self?.close() })
-        self.window?.title = onboarding ? "Connect to Existing OpenClaw" : "KinkoClaw Settings"
+        self.window?.title = onboarding ? "连接网关" : "KinkoClaw 设置"
         self.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -482,7 +504,7 @@ final class PetSettingsWindowController {
 
     private func ensureWindow(onboarding: Bool) {
         if let window {
-            window.title = onboarding ? "Connect to Existing OpenClaw" : "KinkoClaw Settings"
+            window.title = onboarding ? "连接网关" : "KinkoClaw 设置"
             return
         }
 
@@ -498,7 +520,7 @@ final class PetSettingsWindowController {
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false)
-        window.title = onboarding ? "Connect to Existing OpenClaw" : "KinkoClaw Settings"
+        window.title = onboarding ? "连接网关" : "KinkoClaw 设置"
         window.contentViewController = hosting
         window.isReleasedWhenClosed = false
         window.center()
@@ -509,7 +531,6 @@ final class PetSettingsWindowController {
 @MainActor
 private final class PetContextMenuTarget: NSObject {
     var onOpenChat: (() -> Void)?
-    var onOpenDebugChat: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onReconnect: (() -> Void)?
     var onResetPosition: (() -> Void)?
@@ -517,7 +538,6 @@ private final class PetContextMenuTarget: NSObject {
     var onSelectPack: ((String) -> Void)?
 
     @objc func openChat() { self.onOpenChat?() }
-    @objc func openDebugChat() { self.onOpenDebugChat?() }
     @objc func openSettings() { self.onOpenSettings?() }
     @objc func reconnect() { self.onReconnect?() }
     @objc func resetPosition() { self.onResetPosition?() }
@@ -543,22 +563,19 @@ struct PetMenuBarContent: View {
 
             Divider()
 
-            Button("Open Stage") {
+            Button("打开主舞台") {
                 CharacterStageWindowController.shared.show(anchorFrame: PetOverlayController.shared.currentFrame())
             }
-            Button("Debug Text Chat") {
-                PetChatPanelController.shared.toggle(anchorFrame: PetOverlayController.shared.currentFrame())
-            }
-            Button("Settings…") {
+            Button("设置…") {
                 CharacterStageWindowController.shared.openSettings(anchorFrame: PetOverlayController.shared.currentFrame())
             }
-            Button("Reconnect") {
+            Button("重新连接") {
                 Task { @MainActor in
                     _ = await self.gateway.reconnect(reason: "menu-bar")
                 }
             }
 
-            Menu("Live2D Model") {
+            Menu("角色模型") {
                 ForEach(self.settings.availablePacks, id: \.id) { pack in
                     Button(pack.displayName) {
                         self.settings.selectedLive2DModelId = pack.id
@@ -568,11 +585,11 @@ struct PetMenuBarContent: View {
                 }
             }
 
-            Toggle("Launch at login", isOn: self.$settings.launchAtLogin)
+            Toggle("登录时启动", isOn: self.$settings.launchAtLogin)
 
             Divider()
 
-            Button("Quit KinkoClaw") {
+            Button("退出应用") {
                 NSApp.terminate(nil)
             }
         }
@@ -583,13 +600,13 @@ struct PetMenuBarContent: View {
     private var statusTitle: String {
         switch self.gateway.connectionStatus {
         case .disconnected:
-            "Disconnected"
+            "未连接"
         case .connecting:
-            "Connecting…"
+            "连接中…"
         case .connected:
-            "Connected"
+            "已连接"
         case let .error(message):
-            message.isEmpty ? "Connection Error" : "Connection Error"
+            message.isEmpty ? "连接错误" : "连接错误"
         }
     }
 
@@ -651,13 +668,13 @@ struct PetMenuBarLabel: View {
     private var tooltip: String {
         switch self.gateway.connectionStatus {
         case .connected:
-            return "KinkoClaw connected"
+            return "KinkoClaw 已连接"
         case .connecting:
-            return "KinkoClaw connecting"
+            return "KinkoClaw 连接中"
         case let .error(message):
-            return message.isEmpty ? "KinkoClaw connection error" : "KinkoClaw: \(message)"
+            return message.isEmpty ? "KinkoClaw 连接错误" : "KinkoClaw：\(message)"
         case .disconnected:
-            return "KinkoClaw disconnected"
+            return "KinkoClaw 未连接"
         }
     }
 }
@@ -718,15 +735,15 @@ struct PetOverlayView: View {
     private var overlayStatusText: String {
         switch self.gateway.presenceState {
         case .disconnected:
-            "Offline"
+            "离线"
         case .idle:
-            "Ready"
+            "待机"
         case .thinking:
-            "Thinking"
+            "思考中"
         case .replying:
-            "Replying"
+            "回复中"
         case .error:
-            "Needs attention"
+            "需要处理"
         }
     }
 }
@@ -1117,16 +1134,16 @@ struct PetSettingsView: View {
         VStack(alignment: .leading, spacing: 18) {
             if self.onboarding {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Connect to Existing OpenClaw")
+                    Text("连接网关")
                         .font(.system(size: 22, weight: .bold))
-                    Text("KinkoClaw now hosts an AIRI-style stage. Point it at an OpenClaw gateway that already exists on this Mac or on a remote host, and the character stage will stay attached to the same `main` assistant.")
+                    Text("KinkoClaw 会连接一个已存在的网关，它可以运行在这台 Mac 上，也可以运行在远端主机上。连接成功后，角色舞台会持续绑定到同一个 `main` 会话。")
                         .foregroundStyle(.secondary)
                 }
             }
 
             Form {
-                Section("Connection") {
-                    Picker("Mode", selection: self.$settings.connectionMode) {
+                Section("连接") {
+                    Picker("模式", selection: self.$settings.connectionMode) {
                         ForEach(GatewayConnectionProfile.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
@@ -1136,7 +1153,7 @@ struct PetSettingsView: View {
                         .foregroundStyle(.secondary)
 
                     HStack {
-                        Text("Gateway port")
+                        Text("网关端口")
                         Spacer()
                         TextField(
                             "18789",
@@ -1149,25 +1166,25 @@ struct PetSettingsView: View {
 
                     if self.settings.connectionMode == .sshTunnel {
                         TextField("user@host[:22]", text: self.$settings.sshTarget)
-                        TextField("~/.ssh/id_ed25519 (optional)", text: self.$settings.sshIdentityPath)
+                        TextField("~/.ssh/id_ed25519（可选）", text: self.$settings.sshIdentityPath)
                     }
 
                     if self.settings.connectionMode == .directWss {
                         TextField("wss://gateway.example.ts.net", text: self.$settings.directGatewayURL)
-                        Text("Direct mode only supports remote `wss://` gateways. Use Local or SSH Tunnel for `ws://127.0.0.1`.")
+                        Text("直连模式只支持远端 `wss://` 网关；如果是 `ws://127.0.0.1`，请使用本地或 SSH 隧道。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
-                    SecureField("Gateway auth token (optional)", text: self.$settings.gatewayAuthToken)
+                    SecureField("网关鉴权令牌（可选）", text: self.$settings.gatewayAuthToken)
 
                     HStack(spacing: 10) {
-                        Button(self.onboarding ? "Save and Connect" : "Reconnect") {
+                        Button(self.onboarding ? "保存并连接" : "重新连接") {
                             Task { await self.submit(closeOnSuccess: self.onboarding) }
                         }
                         .disabled(self.isSubmitting || !self.settings.isConnectionProfileComplete)
 
-                        Button("Test Connection") {
+                        Button("测试连接") {
                             Task { await self.submit(closeOnSuccess: false) }
                         }
                         .disabled(self.isSubmitting || !self.settings.isConnectionProfileComplete)
@@ -1229,9 +1246,9 @@ struct PetSettingsView: View {
                     }
                 }
 
-                Section("App") {
-                    Toggle("Launch at login", isOn: self.$settings.launchAtLogin)
-                    Text("KinkoClaw always stays in the menu bar so the desktop pet never loses its main entry point.")
+                Section("应用") {
+                    Toggle("登录时启动", isOn: self.$settings.launchAtLogin)
+                    Text("KinkoClaw 会常驻顶部菜单栏，确保桌宠始终有固定入口。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -1242,7 +1259,7 @@ struct PetSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Launch at login only works once KinkoClaw is packaged as an app bundle.")
+                        Text("“登录时启动” 只有在 KinkoClaw 以应用包形式运行时才会生效。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1251,7 +1268,7 @@ struct PetSettingsView: View {
 
             HStack {
                 Spacer()
-                Button(self.onboarding ? "Later" : "Done") {
+                Button(self.onboarding ? "稍后" : "完成") {
                     self.onClose()
                 }
             }
@@ -1268,13 +1285,13 @@ struct PetSettingsView: View {
         let success = await self.gateway.reconnect(reason: closeOnSuccess ? "onboarding" : "manual")
         if success {
             self.settings.hasCompletedOnboarding = true
-            self.feedbackMessage = "Connected to \(self.settings.connectionSummary)"
+            self.feedbackMessage = "已连接到 \(self.settings.connectionSummary)"
             PetChatPanelController.shared.refreshAppearance()
             if closeOnSuccess {
                 self.onClose()
             }
         } else {
-            self.feedbackMessage = self.gateway.lastErrorMessage ?? "Connection failed"
+            self.feedbackMessage = self.gateway.lastErrorMessage ?? "连接失败"
         }
     }
 }

@@ -1,26 +1,21 @@
-# OpenClaw macOS app (dev + signing)
+# KinkoClaw macOS app
 
 ## Quick dev run
 
 ```bash
-# from repo root
-scripts/restart-mac.sh
+./scripts/run-kinkoclaw-debug.sh
 ```
 
-Options:
-
-```bash
-scripts/restart-mac.sh --no-sign   # fastest dev; ad-hoc signing (TCC permissions do not stick)
-scripts/restart-mac.sh --sign      # force code signing (requires cert)
-```
+This is the only supported daily development run path.
+It rebuilds the stage frontend, rebuilds the `KinkoClaw` Swift target, stops old instances, and launches the visible debug binary directly.
 
 ## Packaging flow
 
 ```bash
-scripts/package-mac-app.sh
+./scripts/package-kinkoclaw-app.sh
 ```
 
-Creates `dist/OpenClaw.app` and signs it via `scripts/codesign-mac-app.sh`.
+Creates `dist/KinkoClaw.app` and signs it via `scripts/codesign-mac-app.sh`.
 
 ## Signing behavior
 
@@ -39,26 +34,8 @@ If none found:
 After signing, we read the app bundle Team ID and compare every Mach-O inside the app.
 If any embedded binary has a different Team ID, signing fails.
 
-Skip the audit:
-```bash
-SKIP_TEAM_ID_CHECK=1 scripts/package-mac-app.sh
-```
-
-## Library validation workaround (dev only)
-
-If Sparkle Team ID mismatch blocks loading (common with Apple Development certs), opt in:
-
-```bash
-DISABLE_LIBRARY_VALIDATION=1 scripts/package-mac-app.sh
-```
-
-This adds `com.apple.security.cs.disable-library-validation` to app entitlements.
-Use for local dev only; keep off for release builds.
-
-## Useful env flags
+Useful env flags:
 
 - `SIGN_IDENTITY="Apple Development: Your Name (TEAMID)"`
-- `ALLOW_ADHOC_SIGNING=1` (ad-hoc, TCC permissions do not persist)
-- `CODESIGN_TIMESTAMP=off` (offline debug)
-- `DISABLE_LIBRARY_VALIDATION=1` (dev-only Sparkle workaround)
-- `SKIP_TEAM_ID_CHECK=1` (bypass audit)
+- `ALLOW_ADHOC_SIGNING=1`
+- `CODESIGN_TIMESTAMP=off`

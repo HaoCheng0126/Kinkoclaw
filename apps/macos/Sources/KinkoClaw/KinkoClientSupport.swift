@@ -2,7 +2,10 @@ import Foundation
 import Security
 
 enum KinkoInstanceIdentity {
-    private static let suiteName = "ai.openclaw.kinkoclaw.shared"
+    private static let suiteName = "ai.kinkoclaw.shared"
+    private static let legacySuiteNames = [
+        "ai.openclaw.kinkoclaw.shared",
+    ]
     private static let instanceIDKey = "instanceId"
 
     private static var defaults: UserDefaults {
@@ -15,6 +18,19 @@ enum KinkoInstanceIdentity {
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !existing.isEmpty
         {
+            return existing
+        }
+
+        for suiteName in Self.legacySuiteNames {
+            guard let legacyDefaults = UserDefaults(suiteName: suiteName),
+                  let existing = legacyDefaults.string(forKey: instanceIDKey)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !existing.isEmpty
+            else {
+                continue
+            }
+
+            defaults.set(existing, forKey: instanceIDKey)
             return existing
         }
 

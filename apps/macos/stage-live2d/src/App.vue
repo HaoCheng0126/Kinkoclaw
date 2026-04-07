@@ -2,6 +2,11 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 
 import { Live2DStageRuntime } from "./live2d-runtime";
+import previewChitose from "./assets/model-previews/Chitose.png";
+import previewHibiki from "./assets/model-previews/Hibiki.png";
+import previewHijiki from "./assets/model-previews/Hijiki.png";
+import previewHiyori from "./assets/model-previews/Hiyori.png";
+import previewTororo from "./assets/model-previews/Tororo.png";
 
 const props = defineProps({
   stageMode: {
@@ -24,7 +29,6 @@ const state = reactive({
   presenceState: "disconnected",
   pack: null,
   availablePacks: [],
-  availableThemes: [],
   messages: [],
   streamingAssistantText: "",
   fallbackChatAvailable: false,
@@ -44,7 +48,7 @@ const connectionDraft = reactive({
 
 const characterDraft = reactive({
   selectedLive2DModelId: "",
-  selectedThemeId: "",
+  appearanceMode: "light",
   sceneModelScale: 1,
   sceneModelOffsetX: 0,
   sceneModelOffsetY: 0,
@@ -66,6 +70,14 @@ const modelFallback = ref(null);
 
 let runtime = null;
 let toastTimer = 0;
+
+const bundledPreviewURLMap = {
+  "previews/Hiyori.png": previewHiyori,
+  "previews/Chitose.png": previewChitose,
+  "previews/Hibiki.png": previewHibiki,
+  "previews/Tororo.png": previewTororo,
+  "previews/Hijiki.png": previewHijiki,
+};
 
 function post(type, extra = {}) {
   bridge.postMessage({ type, ...extra });
@@ -117,6 +129,10 @@ function resolveAssetURL(path) {
     return "";
   }
 
+  if (bundledPreviewURLMap[path]) {
+    return bundledPreviewURLMap[path];
+  }
+
   try {
     return new URL(path, window.location.href).href;
   } catch {
@@ -128,17 +144,6 @@ const packsById = computed(() =>
   Object.fromEntries(state.availablePacks.map((pack) => [pack.id, pack])),
 );
 
-const themesById = computed(() =>
-  Object.fromEntries(state.availableThemes.map((theme) => [theme.id, theme])),
-);
-
-const selectedTheme = computed(() => {
-  if (characterDraft.selectedThemeId && themesById.value[characterDraft.selectedThemeId]) {
-    return themesById.value[characterDraft.selectedThemeId];
-  }
-  return state.availableThemes[0] ?? null;
-});
-
 const baseDisplayPack = computed(() => {
   if (characterDraft.selectedLive2DModelId && packsById.value[characterDraft.selectedLive2DModelId]) {
     return packsById.value[characterDraft.selectedLive2DModelId];
@@ -146,20 +151,8 @@ const baseDisplayPack = computed(() => {
   return state.pack;
 });
 
-function composePreviewPack(pack, theme) {
-  if (!pack || !theme) {
-    return pack;
-  }
-
-  return {
-    ...pack,
-    accentHex: theme.accentHex,
-    assets: theme.assets ?? pack.assets,
-    animationProfile: theme.animationProfile ?? pack.animationProfile,
-  };
-}
-
-const displayPack = computed(() => composePreviewPack(baseDisplayPack.value, selectedTheme.value));
+const displayPack = computed(() => baseDisplayPack.value);
+const appearanceMode = computed(() => (characterDraft.appearanceMode === "dark" ? "dark" : "light"));
 
 const themeStyle = computed(() => {
   const pack = displayPack.value;
@@ -210,13 +203,13 @@ const hasSubtitle = computed(() => subtitleText.value.trim().length > 0);
 const drawerConnectionFeedback = computed(() => {
   switch (state.connectionStatus) {
     case "connecting":
-      return "正在连接现有的 OpenClaw 网关…";
+      return "正在连接现有网关…";
     case "connected":
       return connectionDraft.summary || "网关已连接，舞台固定绑定到 `main` 会话。";
     case "error":
       return state.statusMessage || "网关返回了错误。";
     default:
-      return connectionDraft.summary || "在这里连接一个已有的 OpenClaw 网关。";
+      return connectionDraft.summary || "在这里连接一个已有网关。";
   }
 });
 
@@ -239,7 +232,6 @@ function applySettingsPayload(payload) {
   }
 
   state.availablePacks = payload.availablePacks ?? state.availablePacks;
-  state.availableThemes = payload.availableThemes ?? state.availableThemes;
   state.settingsOpen = Boolean(payload.settingsOpen);
 
   if (payload.connection) {
@@ -265,10 +257,10 @@ function applySettingsPayload(payload) {
     characterDraft.selectedLive2DModelId = state.pack.id;
   }
 
-  if (payload.selectedThemeId) {
-    characterDraft.selectedThemeId = payload.selectedThemeId;
-  } else if (!characterDraft.selectedThemeId && payload.availableThemes?.length) {
-    characterDraft.selectedThemeId = payload.availableThemes[0].id;
+  if (payload.appearanceMode === "dark" || payload.appearanceMode === "light") {
+    characterDraft.appearanceMode = payload.appearanceMode;
+  } else if (!characterDraft.appearanceMode) {
+    characterDraft.appearanceMode = "light";
   }
 
   if (payload.personaCard) {
@@ -361,6 +353,15 @@ watch(
   { deep: true },
 );
 
+watch(
+  appearanceMode,
+  (mode) => {
+    document.documentElement.dataset.appearance = mode;
+    document.body.dataset.appearance = mode;
+  },
+  { immediate: true },
+);
+
 function setSettingsOpen(open) {
   state.settingsOpen = Boolean(open);
   post("settings.visibility", { open: state.settingsOpen });
@@ -387,10 +388,18 @@ function saveConnection() {
   });
 }
 
+function selectModel(pack) {
+  characterDraft.selectedLive2DModelId = pack.id;
+  const frame = pack.defaultSceneFrame ?? { scale: 1, offsetX: 0, offsetY: 0 };
+  characterDraft.sceneModelScale = Number(frame.scale ?? 1) || 1;
+  characterDraft.sceneModelOffsetX = Number(frame.offsetX ?? 0) || 0;
+  characterDraft.sceneModelOffsetY = Number(frame.offsetY ?? 0) || 0;
+}
+
 function saveCharacter() {
   post("settings.saveCharacter", {
     selectedLive2DModelId: characterDraft.selectedLive2DModelId,
-    selectedThemeId: characterDraft.selectedThemeId,
+    appearanceMode: appearanceMode.value,
     sceneModelScale: clamp(Number(characterDraft.sceneModelScale || 1), 0.72, 1.4),
     sceneModelOffsetX: clamp(Number(characterDraft.sceneModelOffsetX || 0), -0.22, 0.22),
     sceneModelOffsetY: clamp(Number(characterDraft.sceneModelOffsetY || 0), -0.22, 0.22),
@@ -411,8 +420,13 @@ function reconnectGateway() {
   post("gateway.reconnect");
 }
 
-function resetPetPosition() {
-  post("settings.resetPetPosition");
+function resetCharacterPosition() {
+  const pack = packsById.value[characterDraft.selectedLive2DModelId] ?? state.pack;
+  const frame = pack?.defaultSceneFrame ?? { scale: 1, offsetX: 0, offsetY: 0 };
+  characterDraft.sceneModelScale = Number(frame.scale ?? 1) || 1;
+  characterDraft.sceneModelOffsetX = Number(frame.offsetX ?? 0) || 0;
+  characterDraft.sceneModelOffsetY = Number(frame.offsetY ?? 0) || 0;
+  post("settings.resetCharacterPosition");
 }
 
 function importModel() {
@@ -454,7 +468,15 @@ defineExpose({ receive });
 </script>
 
 <template>
-  <div class="stage-shell" :class="{ 'is-pet': isPetMode }" :style="themeStyle">
+  <div
+    class="stage-shell"
+    :class="{
+      'is-pet': isPetMode,
+      'appearance-light': appearanceMode === 'light',
+      'appearance-dark': appearanceMode === 'dark',
+    }"
+    :style="themeStyle"
+  >
     <template v-if="!isPetMode">
       <section class="scene-column">
         <div class="scene-backdrop">
@@ -466,7 +488,7 @@ defineExpose({ receive });
         <header class="scene-meta">
           <div class="meta-pill">
             <span class="meta-pill__dot"></span>
-            {{ displayPack?.interactionProfile?.personaLabel || "AIRI 角色" }}
+            {{ displayPack?.interactionProfile?.personaLabel || "角色" }}
           </div>
         </header>
 
@@ -479,10 +501,10 @@ defineExpose({ receive });
           <div class="scene-aura"></div>
           <div class="scene-frame">
             <div class="live2d-host" ref="live2dHost"></div>
-            <div class="model-fallback" ref="modelFallback">正在加载 AIRI Live2D…</div>
+            <div class="model-fallback" ref="modelFallback">正在加载 Live2D…</div>
           </div>
           <div v-if="hasSubtitle" class="subtitle-bubble">
-            <div class="subtitle-prefix">{{ displayPack?.dialogueProfile?.subtitlePrefix || "AIRI" }}</div>
+            <div class="subtitle-prefix">{{ displayPack?.dialogueProfile?.subtitlePrefix || "角色" }}</div>
             <div class="subtitle-text">{{ subtitleText }}</div>
           </div>
         </div>
@@ -492,7 +514,7 @@ defineExpose({ receive });
         <header class="chat-header">
           <div class="chat-header__copy">
             <p class="eyebrow">KINKOCLAW 前台</p>
-            <h1>{{ displayPack?.displayName || "AIRI" }}</h1>
+            <h1>{{ displayPack?.displayName || "KinkoClaw" }}</h1>
           </div>
           <div class="header-actions">
             <button
@@ -515,7 +537,7 @@ defineExpose({ receive });
             :class="message.role === 'user' ? 'user' : 'assistant'"
           >
             <div class="message-card__meta">
-              <span>{{ message.role === "user" ? "你" : displayPack?.dialogueProfile?.subtitlePrefix || "AIRI" }}</span>
+              <span>{{ message.role === "user" ? "你" : displayPack?.dialogueProfile?.subtitlePrefix || "角色" }}</span>
               <span>{{ message.pending ? "发送中" : formatMessageTime(message.timestamp) }}</span>
             </div>
             <div class="message-card__text">{{ escapeText(message.text) }}</div>
@@ -549,7 +571,7 @@ defineExpose({ receive });
                 <div class="drawer-section__header">
                   <div>
                     <p class="drawer-kicker">连接</p>
-                    <h3>OpenClaw 网关</h3>
+                    <h3>网关</h3>
                   </div>
                   <span class="drawer-badge">{{ connectionLabel }}</span>
                 </div>
@@ -613,12 +635,32 @@ defineExpose({ receive });
                 <div class="drawer-section__header">
                   <div>
                     <p class="drawer-kicker">形象</p>
-                    <h3>Live2D 模型与主题</h3>
+                    <h3>Live2D 模型与外观</h3>
                   </div>
                 </div>
 
                 <div class="drawer-actions drawer-actions--leading">
                   <button type="button" class="secondary-button" @click="importModel">导入 Live2D 模型</button>
+                </div>
+
+                <p class="subsection-label">外观模式</p>
+                <div class="mode-switch">
+                  <button
+                    type="button"
+                    class="mode-pill"
+                    :class="{ active: appearanceMode === 'light' }"
+                    @click="characterDraft.appearanceMode = 'light'"
+                  >
+                    浅色
+                  </button>
+                  <button
+                    type="button"
+                    class="mode-pill"
+                    :class="{ active: appearanceMode === 'dark' }"
+                    @click="characterDraft.appearanceMode = 'dark'"
+                  >
+                    深色
+                  </button>
                 </div>
 
                 <p class="subsection-label">模型</p>
@@ -629,7 +671,7 @@ defineExpose({ receive });
                     type="button"
                     class="model-card"
                     :class="{ active: characterDraft.selectedLive2DModelId === pack.id }"
-                    @click="characterDraft.selectedLive2DModelId = pack.id"
+                    @click="selectModel(pack)"
                   >
                     <span v-if="pack.previewImage" class="model-card__avatar">
                       <img :src="resolveAssetURL(pack.previewImage)" :alt="`${pack.displayName} 头像`" loading="lazy" />
@@ -638,24 +680,6 @@ defineExpose({ receive });
                     <span class="model-card__content">
                       <span class="model-card__title">{{ pack.displayName }}</span>
                       <span class="model-card__meta">{{ pack.sourceLabel }} · {{ pack.interactionProfile.personaLabel }}</span>
-                    </span>
-                  </button>
-                </div>
-
-                <p class="subsection-label">主题包</p>
-                <div class="theme-grid">
-                  <button
-                    v-for="theme in state.availableThemes"
-                    :key="theme.id"
-                    type="button"
-                    class="theme-card"
-                    :class="{ active: characterDraft.selectedThemeId === theme.id }"
-                    @click="characterDraft.selectedThemeId = theme.id"
-                  >
-                    <span class="theme-card__swatch" :style="{ background: theme.accentHex }"></span>
-                    <span class="theme-card__content">
-                      <span class="theme-card__title">{{ theme.displayName }}</span>
-                      <span class="theme-card__meta">{{ theme.subtitle }}</span>
                     </span>
                   </button>
                 </div>
@@ -679,8 +703,8 @@ defineExpose({ receive });
                 </label>
 
                 <div class="drawer-actions">
-                  <button type="button" class="secondary-button" @click="resetPetPosition">重置桌宠位置</button>
-                  <button type="button" class="primary-button" @click="saveCharacter">应用主题与形象</button>
+                  <button type="button" class="secondary-button" @click="resetCharacterPosition">重置角色位置</button>
+                  <button type="button" class="primary-button" @click="saveCharacter">应用外观与形象</button>
                 </div>
               </section>
 
@@ -731,7 +755,7 @@ defineExpose({ receive });
       <section class="pet-shell" @click="handleTapCharacter">
         <div class="pet-aura"></div>
         <div class="pet-host" ref="live2dHost"></div>
-        <div class="model-fallback pet" ref="modelFallback">正在加载 AIRI Live2D…</div>
+        <div class="model-fallback pet" ref="modelFallback">正在加载 Live2D…</div>
       </section>
     </template>
   </div>
