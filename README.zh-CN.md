@@ -1,16 +1,42 @@
-# KinkoClaw
+<div align="center">
+  <h1>KinkoClaw</h1>
+  <p>
+    <a href="README.md">English</a>
+  </p>
+</div>
 
-[English](README.md)
+---
 
-> KinkoClaw 是 OpenClaw Gateway 的 macOS 桌面外壳。
+> *KinkoClaw 是 OpenClaw Gateway 的 macOS 桌面外壳。*
 
-KinkoClaw 把一个已经存在的 OpenClaw Gateway，变成更适合日常使用的 macOS 形态：顶部菜单栏入口、桌面悬浮宠物，以及带 Live2D 角色的主舞台聊天界面。
+<div align="center">
+  <p>
+    <img alt="License" src="https://img.shields.io/badge/License-MIT-111111?style=flat-square" />
+    <img alt="macOS" src="https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square" />
+    <img alt="Swift" src="https://img.shields.io/badge/Swift-6-111111?style=flat-square" />
+    <img alt="Live2D" src="https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square" />
+    <img alt="Gateway" src="https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square" />
+  </p>
+</div>
 
-![License](https://img.shields.io/badge/License-MIT-111111?style=flat-square)
-![macOS](https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square)
-![Swift](https://img.shields.io/badge/Swift-6-111111?style=flat-square)
-![Live2D](https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square)
-![Gateway](https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square)
+<p align="center">
+  KinkoClaw 把一个已经存在的 OpenClaw Gateway，变成适合日常使用的 macOS 形态：
+  顶部菜单栏入口、桌面悬浮宠物，以及带 Live2D 角色的主舞台聊天界面。
+</p>
+
+<p align="center">
+  适合已经在本地或远端运行 OpenClaw 的用户，用一个更像桌面应用的外壳替代浏览器优先的交互方式。
+</p>
+
+<p align="center">
+  <a href="#产品预览">产品预览</a>
+  ·
+  <a href="#核心能力">核心能力</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#从源码运行">从源码运行</a>
+</p>
 
 ## 产品预览
 

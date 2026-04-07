@@ -1,16 +1,43 @@
-# KinkoClaw
+<div align="center">
+  <h1>KinkoClaw</h1>
+  <p>
+    <a href="README.zh-CN.md">简体中文</a>
+  </p>
+</div>
 
-[简体中文](README.zh-CN.md)
+---
 
-> KinkoClaw is the macOS desktop shell for OpenClaw Gateway.
+> *KinkoClaw is the macOS desktop shell for OpenClaw Gateway.*
 
-KinkoClaw turns an existing OpenClaw Gateway into a native macOS experience with a menu bar companion, a floating desktop pet, and a Live2D chat stage.
+<div align="center">
+  <p>
+    <img alt="License" src="https://img.shields.io/badge/License-MIT-111111?style=flat-square" />
+    <img alt="macOS" src="https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square" />
+    <img alt="Swift" src="https://img.shields.io/badge/Swift-6-111111?style=flat-square" />
+    <img alt="Live2D" src="https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square" />
+    <img alt="Gateway" src="https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square" />
+  </p>
+</div>
 
-![License](https://img.shields.io/badge/License-MIT-111111?style=flat-square)
-![macOS](https://img.shields.io/badge/macOS-15%2B-111111?style=flat-square)
-![Swift](https://img.shields.io/badge/Swift-6-111111?style=flat-square)
-![Live2D](https://img.shields.io/badge/Live2D-Enabled-111111?style=flat-square)
-![Gateway](https://img.shields.io/badge/OpenClaw-Gateway-111111?style=flat-square)
+<p align="center">
+  Turn an existing OpenClaw Gateway into a native macOS experience with a menu bar companion,
+  a floating desktop pet, and a Live2D chat stage.
+</p>
+
+<p align="center">
+  Built for users who already run OpenClaw locally or remotely and want a dedicated desktop shell
+  instead of a browser-first control surface.
+</p>
+
+<p align="center">
+  <a href="#product-snapshot">Product Snapshot</a>
+  ·
+  <a href="#core-capabilities">Core Capabilities</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#run-from-source">Run From Source</a>
+</p>
 
 ## Product Snapshot
 
